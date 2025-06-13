@@ -1,10 +1,11 @@
 # TaskGenie_flask
+
 Migración de TaskGenie con Flask
 
 ## 📂 Estructura del Proyecto (por ahora)
 
 ```text
-taskgenie/
+taskgenie_flask/
 ├── instance/                   # 🔒 Carpeta de instancia (fuera de VCS)
 │   └── taskgenie.db            # 🗄️ SQLite (se crea al arrancar)
 ├── .env                        # 🔑 Variables de entorno
@@ -45,3 +46,4 @@ taskgenie/
     │   ├── dashboard.html
     │   └── errores.html
     └── static/                 # 📁 CSS, JS, imágenes…
+```
