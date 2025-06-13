@@ -1,7 +1,7 @@
 # TaskGenie_flask
 Migración de TaskGenie con Flask
 
-## 📂 Estructura del Proyecto
+## 📂 Estructura del Proyecto (por ahora)
 
 ```text
 taskgenie/
