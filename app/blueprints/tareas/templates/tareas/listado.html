@@ -1,0 +1,23 @@
+{% extends 'base.html' %} {% block title %}Mis Tareas{% endblock %} {% block
+content %}
+<h2>Mis Tareas</h2>
+<p><a href="{{ url_for('tareas.nueva') }}">Crear nueva tarea</a></p>
+<ul>
+  {% for t in tareas %}
+  <li>
+    <strong>{{ t.titulo }}</strong>
+    {% if t.completada %}(Completada){% endif %} –
+    <a href="{{ url_for('tareas.detalle', tarea_id=t.id) }}">Ver</a> –
+    <a href="{{ url_for('tareas.editar', tarea_id=t.id) }}">Editar</a>
+    <form
+      action="{{ url_for('tareas.eliminar', tarea_id=t.id) }}"
+      method="post"
+      style="display: inline"
+    >
+      {{ csrf_token() }}
+      <button type="submit">Eliminar</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

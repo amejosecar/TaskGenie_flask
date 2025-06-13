@@ -1,0 +1,15 @@
+{% extends 'base.html' %} {% block title %}Mi Perfil{% endblock %} {% block
+content %}
+<section class="perfil">
+  <h2>Perfil de {{ user.nombre }} {{ user.apellido }}</h2>
+  <ul>
+    <li><strong>Email:</strong> {{ user.email }}</li>
+    <li>
+      <strong>Fecha de nacimiento:</strong> {{
+      user.fecha_nacimiento.strftime('%Y-%m-%d') }}
+    </li>
+    <li><strong>Rol:</strong> {{ user.rol.value }}</li>
+  </ul>
+  <p><a href="{{ url_for('tareas.listado') }}">Ver mis tareas</a></p>
+</section>
+{% endblock %}

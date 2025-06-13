@@ -1,0 +1,54 @@
+{% extends 'base.html' %} {% block title %}Panel Admin{% endblock %} {% block
+content %}
+<h2>Panel de Administración</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Email</th>
+      <th>Nombre</th>
+      <th>Rol</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.nombre }} {{ u.apellido }}</td>
+      <td>{{ u.rol.value }}</td>
+      <td>{{ 'Bloqueado' if u.is_blocked else 'Activo' }}</td>
+      <td>
+        <form
+          action="{{ url_for('admin.change_role', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">
+            {{ 'Promover' if u.rol.name=='USER' else 'Degradar' }}
+          </button>
+        </form>
+        <form
+          action="{{ url_for('admin.toggle_block', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">
+            {{ 'Desbloquear' if u.is_blocked else 'Bloquear' }}
+          </button>
+        </form>
+        <form
+          action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends 'base.html' %} {% block title %}API Usuarios{% endblock %} {% block
+content %}
+<h2>Endpoints API Usuarios</h2>
+<ul>
+  <li>
+    POST /u/registro-json
+    <pre>
+{
+  "nombre":"Ana",
+  "apellido":"García",
+  "email":"ana@mail.com",
+  "clave":"secreto",
+  "fecha_nacimiento":"1990-05-15",
+  "rol":"USER"
+}</pre
+    >
+  </li>
+  <li>GET /u/&lt;user_id&gt; → Detalle de usuario</li>
+  <li>
+    GET /u/buscar?email=&lt;email&gt;&amp;rol=&lt;ROL&gt; → Filtrar por email
+    y/o rol
+  </li>
+</ul>
+{% endblock %}

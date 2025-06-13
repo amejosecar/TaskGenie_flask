@@ -1,0 +1,1060 @@
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\.env
+DATABASE_URL=sqlite:///instance/taskgenie.db
+SECRET_KEY=tu_clave_secreta
+DEBUG_MODE=True
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\.flaskenv
+FLASK_APP=app:create_app
+FLASK_ENV=development
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\.gitignore
+# Entorno virtual
+venv/
+
+# Base de datos local
+#instance/
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Variables de entorno
+.env
+
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\README.md
+# TaskGenie_flask
+
+Migración de TaskGenie con Flask
+
+## 📂 Estructura del Proyecto (por ahora)
+
+```text
+taskgenie_flask/
+├── instance/                   # 🔒 Carpeta de instancia (fuera de VCS)
+│   └── taskgenie.db            # 🗄️ SQLite (se crea al arrancar)
+├── .env                        # 🔑 Variables de entorno
+├── .gitignore                  # 🚫 Archivos ignorados
+├── requirements.txt            # 📦 Dependencias
+├── run.py                      # 🚀 Launcher (factory pattern)
+└── app/                        # 🧩 Paquete principal
+    ├── __init__.py             # 🍺 create_app()
+    ├── config.py               # ⚙️ Carga de .env
+    ├── extensions.py           # 🔌 db, csrf, login_manager…
+    ├── services/               # 🔧 Lógica de negocio
+    │   └── auth_service.py
+    ├── models.py               # 📜 Modelos SQLAlchemy
+    ├── blueprints/             # 📌 Blueprints por funcionalidad
+    │   ├── auth/               # 🔑 Login & Registro
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   ├── forms.py
+    │   │   └── templates/auth/
+    │   ├── admin/              # 👑 Panel de administración
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   └── templates/admin/
+    │   ├── perfil/             # 🧑‍💼 Perfil de usuario
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   └── templates/perfil/
+    │   ├── tareas/             # ✅ Gestión de tareas
+    │   │   ├── __init__.py
+    │   │   ├── routes.py
+    │   │   └── templates/tareas/
+    │   └── usuarios/           # 🔍 API usuarios
+    │       ├── __init__.py
+    │       ├── routes.py
+    │       └── templates/usuarios/
+    ├── templates/              # 🎨 Plantillas globales
+    │   ├── base.html
+    │   ├── dashboard.html
+    │   └── errores.html
+    └── static/                 # 📁 CSS, JS, imágenes…
+```
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\requirements.txt
+Flask
+Flask-WTF
+Flask-Login
+python-dotenv
+Flask-SQLAlchemy
+Pydantic
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\run.py
+# run.py
+# 🚀 Script de arranque que invoca create_app()
+
+from app import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    # Arranca el servidor en modo debug si DEBUG_MODE=True
+    app.run(host="0.0.0.0", port=5000, debug=app.config["DEBUG"])
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\config.py
+# app/config.py
+# ⚙️ Carga de .env y definición de configuración
+
+# app/config.py
+
+# app/config.py
+import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+BASE_DIR     = Path(__file__).resolve().parent.parent
+INSTANCE_DIR = BASE_DIR / "instance"
+INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
+
+load_dotenv(BASE_DIR / ".env")
+
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY", "cambiame-ya")
+
+    # Construye el path absoluto a la BD por defecto
+    default_db = INSTANCE_DIR.joinpath("taskgenie.db").as_posix()
+
+    # Lee env var y normaliza si es SQLite
+    raw = os.getenv("DATABASE_URL", f"sqlite:///{default_db}")
+    if raw.startswith("sqlite:///"):
+        # extrae el path tras 'sqlite:///' y conviértelo a absoluto si no lo es
+        p = raw[10:]
+        p = Path(p)
+        if not p.is_absolute():
+            p = BASE_DIR / p
+        db_uri = f"sqlite:///{p.as_posix()}"
+    else:
+        db_uri = raw
+
+    SQLALCHEMY_DATABASE_URI      = db_uri
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    DEBUG                        = os.getenv("DEBUG_MODE", "False").lower() in ("true","1","yes")
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\extensions.py
+# app/extensions.py
+# 🔌 Inicializa extensiones: ORM, CSRF, Login
+
+# app/extensions.py
+
+from flask_sqlalchemy import SQLAlchemy
+from flask_wtf import CSRFProtect
+from flask_login import LoginManager
+
+# ORM: maneja la conexión y los modelos
+db = SQLAlchemy()
+
+# Protege todos los formularios de ataques CSRF
+csrf = CSRFProtect()
+
+# Gestiona login/logout y la sesión del usuario
+login_manager = LoginManager()
+login_manager.login_view = "auth.login"      
+login_manager.session_protection = "strong"  
+
+@login_manager.user_loader
+def load_user(user_id: str):
+    """
+    Callback para Flask-Login: carga un Usuario dado su ID desde la sesión.
+    Importamos aquí para evitar circular imports.
+    """
+    from app.models import Usuario
+    return db.session.get(Usuario, int(user_id))
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\models.py
+# app/models.py
+
+from enum import Enum
+from datetime import date
+from flask_login import UserMixin
+from app.extensions import db
+
+class RolEnum(Enum):
+    ADMIN    = "ADMIN"
+    PROFESOR = "PROFESOR"
+    ALUMNO   = "ALUMNO"
+    USER     = "USER"
+
+class Usuario(UserMixin, db.Model):
+    __tablename__ = "usuarios"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    nombre           = db.Column(db.String(50), nullable=False)
+    apellido         = db.Column(db.String(50), nullable=False)
+    email            = db.Column(db.String(120), unique=True, nullable=False)
+    clave_hash       = db.Column(db.String(128), nullable=False)
+    fecha_nacimiento = db.Column(db.Date, nullable=False)
+    rol              = db.Column(db.Enum(RolEnum), default=RolEnum.USER, nullable=False)
+    is_blocked       = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f"<Usuario {self.email}>"
+
+    @property
+    def edad(self) -> int:
+        """Calcula la edad a partir de la fecha de nacimiento."""
+        today = date.today()
+        born = self.fecha_nacimiento
+        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+class Tarea(db.Model):
+    __tablename__  = "tareas"
+
+    id             = db.Column(db.Integer, primary_key=True)
+    titulo         = db.Column(db.String(100), nullable=False)
+    descripcion    = db.Column(db.Text, nullable=True)
+    completada     = db.Column(db.Boolean, default=False)
+    fecha_creacion = db.Column(db.Date, default=date.today)
+
+    def __repr__(self):
+        return f"<Tarea {self.id} {self.titulo}>"
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\__init__.py
+# app/__init__.py
+# 🍺 Application Factory: define create_app()
+
+from flask import Flask, render_template
+from .config import Config
+from .extensions import db, csrf, login_manager
+
+# Importa tus Blueprints
+from .blueprints.auth import auth_bp
+from .blueprints.admin import admin_bp
+from .blueprints.perfil import perfil_bp
+from .blueprints.tareas import tareas_bp
+from .blueprints.usuarios import usuarios_bp
+
+def create_app():
+    # 1. Crea la app y carga configuración
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_object(Config)
+
+    # 2. Inicializa extensiones
+    db.init_app(app)
+    csrf.init_app(app)
+    login_manager.init_app(app)
+
+    # 3. Registra Blueprints
+    app.register_blueprint(auth_bp,     url_prefix="")        # login / registro
+    app.register_blueprint(admin_bp,    url_prefix="/admin")  # panel admin
+    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # perfil usuario
+    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # gestión de tareas
+    app.register_blueprint(usuarios_bp, url_prefix="/u")      # API usuarios
+
+    # 4. Crea tablas SQLite en instance/taskgenie.db y semillas de prueba
+    with app.app_context():
+        db.create_all()
+
+        # Poblado inicial: tres usuarios de prueba
+        from .models import Usuario, RolEnum
+        from werkzeug.security import generate_password_hash
+        from datetime import date
+
+        if not Usuario.query.first():
+            inicial = [
+                {
+                    "nombre": "Americo-admin",
+                    "apellido": "carrillo",
+                    "email": "amejosecar@keko.com",
+                    "clave": "333333",
+                    "fecha_nacimiento": "1970-12-18",
+                    "rol": RolEnum.ADMIN
+                },
+                {
+                    "nombre": "Americo-profe",
+                    "apellido": "carrillo",
+                    "email": "amejosecar@profe.com",
+                    "clave": "333333",
+                    "fecha_nacimiento": "1970-12-18",
+                    "rol": RolEnum.PROFESOR
+                },
+                {
+                    "nombre": "Americo-Alum",
+                    "apellido": "carrillo",
+                    "email": "amejosecar@alumno.com",
+                    "clave": "333333",
+                    "fecha_nacimiento": "1970-12-18",
+                    "rol": RolEnum.ALUMNO
+                },
+            ]
+            for u in inicial:
+                usuario = Usuario(
+                    nombre=u["nombre"],
+                    apellido=u["apellido"],
+                    email=u["email"],
+                    clave_hash=generate_password_hash(u["clave"]),
+                    fecha_nacimiento=date.fromisoformat(u["fecha_nacimiento"]),
+                    rol=u["rol"]
+                )
+                db.session.add(usuario)
+            db.session.commit()
+
+    # 5. Manejador genérico de 404
+    @app.errorhandler(404)
+    def not_found(e):
+        return render_template("errores.html", mensaje="Página no encontrada"), 404
+
+    return app
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\admin\routes.py
+from flask import render_template, redirect, url_for, flash, request
+from flask_login import login_required, current_user
+from app.services.memory_repo import MemoryDB
+from app.models import Usuario, RolEnum
+from . import admin_bp
+
+# Instancia del stub
+db = MemoryDB()
+
+def solo_admin(fn):
+    """Decorator para restringir acceso sólo a ADMIN."""
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or current_user.rol != RolEnum.ADMIN:
+            flash("Acceso denegado", "danger")
+            return redirect(url_for("auth.login"))
+        return fn(*args, **kwargs)
+    wrapper.__name__ = fn.__name__
+    return login_required(wrapper)
+
+@admin_bp.route("/", methods=["GET"])
+@solo_admin
+def dashboard():
+    users = db.query(Usuario).all()
+    return render_template("admin/dashboard_admin.html", users=users)
+
+@admin_bp.route("/user/<int:user_id>/change-role", methods=["POST"])
+@solo_admin
+def change_role(user_id):
+    user = db.query(Usuario).filter_by(id=user_id).first()
+    if user:
+        user.rol = RolEnum.ADMIN if user.rol == RolEnum.USER else RolEnum.USER
+        db.commit()
+        flash(f"Rol de {user.email} cambiado a {user.rol.value}", "success")
+    return redirect(url_for("admin.dashboard"))
+
+@admin_bp.route("/user/<int:user_id>/toggle-block", methods=["POST"])
+@solo_admin
+def toggle_block(user_id):
+    user = db.query(Usuario).filter_by(id=user_id).first()
+    if user:
+        user.is_blocked = not getattr(user, "is_blocked", False)
+        db.commit()
+        estado = "bloqueado" if user.is_blocked else "desbloqueado"
+        flash(f"Usuario {user.email} {estado}", "info")
+    return redirect(url_for("admin.dashboard"))
+
+@admin_bp.route("/user/<int:user_id>/delete", methods=["POST"])
+@solo_admin
+def delete_user(user_id):
+    user = db.query(Usuario).filter_by(id=user_id).first()
+    if user:
+        db._storage["Usuario"].remove(user)
+        flash(f"Usuario {user.email} eliminado", "warning")
+    return redirect(url_for("admin.dashboard"))
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\admin\__init__.py
+from flask import Blueprint
+
+admin_bp = Blueprint(
+    "admin",
+    __name__,
+    template_folder="templates/admin"
+)
+
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\admin\templates\admin\dashboard_admin.html
+{% extends 'base.html' %} {% block title %}Panel Admin{% endblock %} {% block
+content %}
+<h2>Panel de Administración</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Email</th>
+      <th>Nombre</th>
+      <th>Rol</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.id }}</td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.nombre }} {{ u.apellido }}</td>
+      <td>{{ u.rol.value }}</td>
+      <td>{{ 'Bloqueado' if u.is_blocked else 'Activo' }}</td>
+      <td>
+        <form
+          action="{{ url_for('admin.change_role', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">
+            {{ 'Promover' if u.rol.name=='USER' else 'Degradar' }}
+          </button>
+        </form>
+        <form
+          action="{{ url_for('admin.toggle_block', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">
+            {{ 'Desbloquear' if u.is_blocked else 'Bloquear' }}
+          </button>
+        </form>
+        <form
+          action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+          method="post"
+          style="display: inline"
+        >
+          <button type="submit">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\auth\forms.py
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, DateField, SelectField, SubmitField
+from wtforms.validators import DataRequired, Email, EqualTo
+from app.models import RolEnum
+
+class RegisterForm(FlaskForm):
+    nombre = StringField("Nombre", validators=[DataRequired()])
+    apellido = StringField("Apellido", validators=[DataRequired()])
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    fecha_nacimiento = DateField(
+        "Fecha de Nacimiento", 
+        format="%Y-%m-%d", 
+        validators=[DataRequired()]
+    )
+    rol = SelectField(
+        "Rol", 
+        choices=[(role.name, role.value) for role in RolEnum],
+        validators=[DataRequired()]
+    )
+    clave = PasswordField("Contraseña", validators=[DataRequired(), EqualTo("confirmar_clave")])
+    confirmar_clave = PasswordField("Confirmar Contraseña", validators=[DataRequired()])
+    submit = SubmitField("Registrarse")
+
+class LoginForm(FlaskForm):
+    email = StringField("Email", validators=[DataRequired(), Email()])
+    clave = PasswordField("Contraseña", validators=[DataRequired()])
+    submit = SubmitField("Entrar")
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\auth\routes.py
+from flask import render_template, redirect, url_for, flash, request
+from flask_login import login_user, logout_user, login_required, current_user
+from app.services.memory_repo import MemoryDB
+from app.services.auth_service import registrar_usuario, autenticar_usuario
+from . import auth_bp
+from .forms import RegisterForm, LoginForm
+
+# Instancia global del stub en memoria
+db = MemoryDB()
+
+@auth_bp.route("/registro", methods=["GET", "POST"])
+def registro():
+    if current_user.is_authenticated:
+        return redirect(url_for("tareas.listado"))
+
+    form = RegisterForm()
+    if form.validate_on_submit():
+        try:
+            u = registrar_usuario(
+                db,
+                nombre=form.nombre.data,
+                apellido=form.apellido.data,
+                edad=form.edad.data,
+                email=form.email.data,
+                clave=form.clave.data,
+                fecha_nacimiento=form.fecha_nacimiento.data.strftime("%Y-%m-%d"),
+                rol=form.rol.data
+            )
+            flash(f"Usuario {u.email} registrado correctamente", "success")
+            return redirect(url_for("auth.login"))
+        except ValueError as e:
+            flash(str(e), "danger")
+
+    return render_template("auth/register.html", form=form)
+
+@auth_bp.route("/login", methods=["GET", "POST"])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("tareas.listado"))
+
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = autenticar_usuario(db, email=form.email.data, clave=form.clave.data)
+        if user:
+            login_user(user)
+            flash("Has iniciado sesión correctamente", "success")
+            next_page = request.args.get("next") or url_for("tareas.listado")
+            return redirect(next_page)
+        flash("Email o contraseña incorrectos", "danger")
+
+    return render_template("auth/login.html", form=form)
+
+@auth_bp.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Has cerrado sesión", "info")
+    return redirect(url_for("auth.login"))
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\auth\__init__.py
+from flask import Blueprint
+
+auth_bp = Blueprint(
+    "auth", 
+    __name__, 
+    template_folder="templates/auth"
+)
+
+# Importamos las rutas para que se registren
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\auth\templates\auth\login.html
+{% extends 'base.html' %} {% block title %}Login{% endblock %} {% block content
+%}
+<h2>Iniciar Sesión</h2>
+<form method="post">
+  {{ form.hidden_tag() }}
+  <p>{{ form.email.label }}<br />{{ form.email() }}</p>
+  <p>{{ form.clave.label }}<br />{{ form.clave() }}</p>
+  <p>{{ form.submit(class="btn") }}</p>
+</form>
+<p>
+  ¿Aún no estás registrado?
+  <a href="{{ url_for('auth.registro') }}">Regístrate</a>
+</p>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\auth\templates\auth\register.html
+{% extends 'base.html' %} {% block title %}Registro{% endblock %} {% block
+content %}
+<h2>Registro de Usuario</h2>
+<form method="post">
+  {{ form.hidden_tag() }}
+  <p>{{ form.nombre.label }}<br />{{ form.nombre() }}</p>
+  <p>{{ form.apellido.label }}<br />{{ form.apellido() }}</p>
+  <p>{{ form.email.label }}<br />{{ form.email() }}</p>
+  <p>{{ form.fecha_nacimiento.label }}<br />{{ form.fecha_nacimiento() }}</p>
+  <p>{{ form.rol.label }}<br />{{ form.rol() }}</p>
+  <p>{{ form.clave.label }}<br />{{ form.clave() }}</p>
+  <p>{{ form.confirmar_clave.label }}<br />{{ form.confirmar_clave() }}</p>
+  <p>{{ form.submit(class="btn") }}</p>
+</form>
+<p>¿Ya tienes cuenta? <a href="{{ url_for('auth.login') }}">Entra aquí</a></p>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\perfil\routes.py
+from flask import render_template
+from flask_login import login_required, current_user
+from . import perfil_bp
+
+@perfil_bp.route("/", methods=["GET"])
+@login_required
+def index():
+    """
+    Muestra la información del usuario actualmente autenticado.
+    """
+    return render_template("perfil.html", user=current_user)
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\perfil\__init__.py
+from flask import Blueprint
+
+perfil_bp = Blueprint(
+    "perfil",
+    __name__,
+    template_folder="templates/perfil"
+)
+
+# Importa las rutas para que Flask las registre
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\perfil\templates\perfil\perfil.html
+{% extends 'base.html' %} {% block title %}Mi Perfil{% endblock %} {% block
+content %}
+<section class="perfil">
+  <h2>Perfil de {{ user.nombre }} {{ user.apellido }}</h2>
+  <ul>
+    <li><strong>Email:</strong> {{ user.email }}</li>
+    <li>
+      <strong>Fecha de nacimiento:</strong> {{
+      user.fecha_nacimiento.strftime('%Y-%m-%d') }}
+    </li>
+    <li><strong>Rol:</strong> {{ user.rol.value }}</li>
+  </ul>
+  <p><a href="{{ url_for('tareas.listado') }}">Ver mis tareas</a></p>
+</section>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\tareas\routes.py
+from flask import render_template, request, redirect, url_for, flash
+from flask_login import login_required
+from app.services.memory_repo import MemoryDB
+from app.models import Tarea
+from . import tareas_bp
+
+# Stub en memoria (mismo que en auth)
+db = MemoryDB()
+
+@tareas_bp.route("/", methods=["GET"])
+@login_required
+def listado():
+    tareas = db.query(Tarea).all()
+    return render_template("tareas/listado.html", tareas=tareas)
+
+@tareas_bp.route("/nueva", methods=["GET", "POST"])
+@login_required
+def nueva():
+    if request.method == "POST":
+        titulo = request.form.get("titulo")
+        descripcion = request.form.get("descripcion")
+        tarea = Tarea(titulo=titulo, descripcion=descripcion, completada=False)
+        db.add(tarea)
+        db.commit()
+        flash("Tarea creada con éxito", "success")
+        return redirect(url_for("tareas.listado"))
+    return render_template("tareas/form.html", accion="Nueva Tarea", tarea=None)
+
+@tareas_bp.route("/<int:tarea_id>/editar", methods=["GET", "POST"])
+@login_required
+def editar(tarea_id):
+    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    if not tarea:
+        flash("Tarea no encontrada", "danger")
+        return redirect(url_for("tareas.listado"))
+
+    if request.method == "POST":
+        tarea.titulo = request.form.get("titulo")
+        tarea.descripcion = request.form.get("descripcion")
+        tarea.completada = "completada" in request.form
+        db.commit()
+        flash("Tarea actualizada", "success")
+        return redirect(url_for("tareas.listado"))
+
+    return render_template("tareas/form.html", accion="Editar Tarea", tarea=tarea)
+
+@tareas_bp.route("/<int:tarea_id>/ver", methods=["GET"])
+@login_required
+def detalle(tarea_id):
+    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    if not tarea:
+        flash("Tarea no encontrada", "danger")
+        return redirect(url_for("tareas.listado"))
+    return render_template("tareas/detalle.html", tarea=tarea)
+
+@tareas_bp.route("/<int:tarea_id>/eliminar", methods=["POST"])
+@login_required
+def eliminar(tarea_id):
+    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    if tarea:
+        db._storage["Tarea"].remove(tarea)
+        flash("Tarea eliminada", "info")
+    return redirect(url_for("tareas.listado"))
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\tareas\__init__.py
+from flask import Blueprint
+
+tareas_bp = Blueprint(
+    "tareas",
+    __name__,
+    template_folder="templates/tareas"
+)
+
+# Importa las rutas para que Flask las registre
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\tareas\templates\tareas\detalle.html
+{% extends 'base.html' %} {% block title %}Detalle Tarea{% endblock %} {% block
+content %}
+<h2>{{ tarea.titulo }}</h2>
+<p>{{ tarea.descripcion }}</p>
+<p>Estado: {{ 'Completada' if tarea.completada else 'Pendiente' }}</p>
+<p>
+  <a href="{{ url_for('tareas.editar', tarea_id=tarea.id) }}">Editar</a> |
+  <a href="{{ url_for('tareas.listado') }}">Volver</a>
+</p>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\tareas\templates\tareas\form.html
+{% extends 'base.html' %} {% block title %}{{ accion }}{% endblock %} {% block
+content %}
+<h2>{{ accion }}</h2>
+<form method="post">
+  {{ csrf_token() }}
+  <p>
+    <label>Título</label><br />
+    <input
+      type="text"
+      name="titulo"
+      value="{{ tarea.titulo if tarea else '' }}"
+    />
+  </p>
+  <p>
+    <label>Descripción</label><br />
+    <textarea name="descripcion">
+{{ tarea.descripcion if tarea else '' }}</textarea
+    >
+  </p>
+  {% if tarea %}
+  <p>
+    <label>
+      <input
+        type="checkbox"
+        name="completada"
+        {%
+        if
+        tarea.completada
+        %}checked{%
+        endif
+        %}
+      />
+      Completada
+    </label>
+  </p>
+  {% endif %}
+  <p><button type="submit">Guardar</button></p>
+</form>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\tareas\templates\tareas\listado.html
+{% extends 'base.html' %} {% block title %}Mis Tareas{% endblock %} {% block
+content %}
+<h2>Mis Tareas</h2>
+<p><a href="{{ url_for('tareas.nueva') }}">Crear nueva tarea</a></p>
+<ul>
+  {% for t in tareas %}
+  <li>
+    <strong>{{ t.titulo }}</strong>
+    {% if t.completada %}(Completada){% endif %} –
+    <a href="{{ url_for('tareas.detalle', tarea_id=t.id) }}">Ver</a> –
+    <a href="{{ url_for('tareas.editar', tarea_id=t.id) }}">Editar</a>
+    <form
+      action="{{ url_for('tareas.eliminar', tarea_id=t.id) }}"
+      method="post"
+      style="display: inline"
+    >
+      {{ csrf_token() }}
+      <button type="submit">Eliminar</button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\usuarios\routes.py
+from flask import request, jsonify, abort
+from app.services.memory_repo import MemoryDB
+from app.services.auth_service import registrar_usuario
+from app.models import Usuario, RolEnum
+from . import usuarios_bp
+
+# Stub en memoria
+db = MemoryDB()
+
+@usuarios_bp.route("/registro-json", methods=["POST"])
+def registro_json():
+    data = request.get_json() or {}
+    try:
+        user = registrar_usuario(
+            db,
+            nombre=data["nombre"],
+            apellido=data["apellido"],
+            edad=data["edad"],
+            email=data["email"],
+            clave=data["clave"],
+            fecha_nacimiento=data["fecha_nacimiento"],
+            rol=RolEnum[data.get("rol", "USER")]
+        )
+        return jsonify({
+            "id": user.id,
+            "email": user.email,
+            "nombre": user.nombre,
+            "apellido": user.apellido,
+            "rol": user.rol.value
+        }), 201
+    except KeyError as e:
+        return jsonify({"error": f"Falta campo {e.args[0]}"}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 409
+
+@usuarios_bp.route("/<int:user_id>", methods=["GET"])
+def get_usuario(user_id):
+    user = db.query(Usuario).filter_by(id=user_id).first()
+    if not user:
+        abort(404, description="Usuario no encontrado")
+    return jsonify({
+        "id": user.id,
+        "email": user.email,
+        "nombre": user.nombre,
+        "apellido": user.apellido,
+        "edad": user.edad,
+        "fecha_nacimiento": user.fecha_nacimiento,
+        "rol": user.rol.value
+    })
+
+@usuarios_bp.route("/buscar", methods=["GET"])
+def buscar_usuarios():
+    email = request.args.get("email")
+    rol = request.args.get("rol")
+    qs = db.query(Usuario)
+    if email:
+        qs = qs.filter_by(email=email)
+    if rol:
+        try:
+            qs = qs.filter_by(rol=RolEnum[rol])
+        except KeyError:
+            return jsonify({"error": "Rol inválido"}), 400
+    users = qs.all()
+    return jsonify([{
+        "id": u.id,
+        "email": u.email,
+        "nombre": u.nombre,
+        "apellido": u.apellido,
+        "edad": u.edad,
+        "fecha_nacimiento": u.fecha_nacimiento,
+        "rol": u.rol.value
+    } for u in users])
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\usuarios\__init__.py
+from flask import Blueprint
+
+usuarios_bp = Blueprint(
+    "usuarios",
+    __name__,
+    url_prefix="/u",
+    template_folder="templates/usuarios"
+)
+
+# Importa las rutas automáticamente
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\usuarios\templates\usuarios\index.html
+{% extends 'base.html' %} {% block title %}API Usuarios{% endblock %} {% block
+content %}
+<h2>Endpoints API Usuarios</h2>
+<ul>
+  <li>
+    POST /u/registro-json
+    <pre>
+{
+  "nombre":"Ana",
+  "apellido":"García",
+  "email":"ana@mail.com",
+  "clave":"secreto",
+  "fecha_nacimiento":"1990-05-15",
+  "rol":"USER"
+}</pre
+    >
+  </li>
+  <li>GET /u/&lt;user_id&gt; → Detalle de usuario</li>
+  <li>
+    GET /u/buscar?email=&lt;email&gt;&amp;rol=&lt;ROL&gt; → Filtrar por email
+    y/o rol
+  </li>
+</ul>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\services\auth_service.py
+# app/services/auth_service.py
+
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime
+from ..models import Usuario, RolEnum
+
+def registrar_usuario(db, nombre, apellido, edad, email, clave, fecha_nacimiento, rol=RolEnum.USER):
+    # 1) Validaciones (unicidad de email, formato de fecha…)
+    if db.query(Usuario).filter_by(email=email).first():
+        raise ValueError("Email ya registrado")
+
+    # 2) Crear instancia
+    usuario = Usuario(
+        nombre=nombre,
+        apellido=apellido,
+        edad=edad, 
+        email=email,
+        clave_hash=generate_password_hash(clave),
+        fecha_nacimiento=datetime.strptime(fecha_nacimiento, "%Y-%m-%d").date(),
+        rol=rol
+    )
+
+    # 3) Persistir
+    db.add(usuario)
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+def autenticar_usuario(db, email, clave):
+    usuario = db.query(Usuario).filter_by(email=email).first()
+    if not usuario or not check_password_hash(usuario.clave_hash, clave):
+        return None
+    return usuario
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\services\memory_repo.py
+# app/services/memory_repo.py
+
+class QuerySet:
+    def __init__(self, items):
+        self._items = items
+
+    def filter_by(self, **kwargs):
+        filtered = [
+            item for item in self._items
+            if all(getattr(item, k) == v for k, v in kwargs.items())
+        ]
+        return QuerySet(filtered)
+
+    def first(self):
+        return self._items[0] if self._items else None
+
+    def all(self):
+        return list(self._items)
+
+
+class MemoryDB:
+    def __init__(self):
+        # {'Usuario': [u1, u2, …], 'Tarea': […]} 
+        self._storage = {}
+        # Contadores para simular autoincrement
+        self._counters = {}
+
+    def add(self, obj):
+        cls = obj.__class__.__name__
+        if cls not in self._storage:
+            self._storage[cls] = []
+            self._counters[cls] = 1
+
+        # Simula auto-ID
+        obj.id = self._counters[cls]
+        self._counters[cls] += 1
+
+        self._storage[cls].append(obj)
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+    def refresh(self, obj):
+        pass
+
+    def query(self, model):
+        cls = model.__name__
+        items = self._storage.get(cls, [])
+        return QuerySet(items)
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\templates\base.html
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}TaskGenie{% endblock %}</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header>
+      <nav>
+        <a href="{{ url_for('auth.login') }}">Login</a>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('tareas.listado') }}">Tareas</a>
+        <a href="{{ url_for('perfil.index') }}">Perfil</a>
+        {% if current_user.rol.name == 'ADMIN' %}
+        <a href="{{ url_for('admin.dashboard') }}">Admin</a>
+        {% endif %}
+        <a href="{{ url_for('auth.logout') }}">Logout</a>
+        {% endif %}
+      </nav>
+    </header>
+
+    <main>
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %}
+      <ul class="flashes">
+        {% for category, msg in messages %}
+        <li class="{{ category }}">{{ msg }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %} {% endwith %} {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+      <p>&copy; 2025 TaskGenie</p>
+    </footer>
+  </body>
+</html>
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\templates\dashboard.html
+{% extends 'base.html' %} {% block title %}Dashboard{% endblock %} {% block
+content %}
+<section class="dashboard">
+  <h1>Bienvenido, {{ current_user.nombre or 'Usuario' }}!</h1>
+  <ul class="dashboard-links">
+    <li><a href="{{ url_for('tareas.listado') }}">Ver mis tareas</a></li>
+    <li><a href="{{ url_for('perfil.index') }}">Editar perfil</a></li>
+    {% if current_user.rol.name == 'ADMIN' %}
+    <li>
+      <a href="{{ url_for('admin.dashboard') }}">Panel de Administración</a>
+    </li>
+    {% endif %}
+  </ul>
+</section>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\templates\errores.html
+{% extends 'base.html' %} {% block title %}Error{% endblock %} {% block content
+%}
+<section class="error-page">
+  <h1>Oops!</h1>
+  <p>{{ mensaje or 'La página que buscas no existe.' }}</p>
+  <a href="{{ url_for('auth.login') }}">Volver al inicio</a>
+</section>
+{% endblock %}
+

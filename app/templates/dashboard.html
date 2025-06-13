@@ -1,0 +1,15 @@
+{% extends 'base.html' %} {% block title %}Dashboard{% endblock %} {% block
+content %}
+<section class="dashboard">
+  <h1>Bienvenido, {{ current_user.nombre or 'Usuario' }}!</h1>
+  <ul class="dashboard-links">
+    <li><a href="{{ url_for('tareas.listado') }}">Ver mis tareas</a></li>
+    <li><a href="{{ url_for('perfil.index') }}">Editar perfil</a></li>
+    {% if current_user.rol.name == 'ADMIN' %}
+    <li>
+      <a href="{{ url_for('admin.dashboard') }}">Panel de Administración</a>
+    </li>
+    {% endif %}
+  </ul>
+</section>
+{% endblock %}
