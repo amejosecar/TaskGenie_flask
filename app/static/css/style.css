@@ -1,0 +1,81 @@
+:root {
+  --bg: #f5f5f5;
+  --nav-bg: #e0e0e0;
+  --text: #333;
+  --link: #555;
+  --link-hover: #000;
+  --flash-info: #d9edf7;
+  --flash-success: #dff0d8;
+  --flash-danger: #f2dede;
+  --flash-warning: #fcf8e3;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: Arial, sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  background: var(--nav-bg);
+  padding: 1em;
+}
+
+nav {
+  display: flex;
+  gap: 1em;
+}
+
+nav a {
+  color: var(--link);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+nav a:hover {
+  color: var(--link-hover);
+}
+
+main {
+  max-width: 800px;
+  margin: 2em auto;
+  padding: 0 1em;
+}
+
+.flashes {
+  list-style: none;
+  margin-bottom: 1em;
+}
+
+.flashes li {
+  padding: 0.75em 1em;
+  border-radius: 4px;
+  margin-bottom: 0.5em;
+  font-size: 0.95em;
+}
+
+.flashes .info {
+  background: var(--flash-info);
+}
+.flashes .success {
+  background: var(--flash-success);
+}
+.flashes .danger {
+  background: var(--flash-danger);
+}
+.flashes .warning {
+  background: var(--flash-warning);
+}
+
+footer {
+  text-align: center;
+  padding: 1em;
+  font-size: 0.85em;
+  color: #777;
+}

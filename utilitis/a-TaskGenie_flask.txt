@@ -79,12 +79,8 @@ taskgenie_flask/
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\requirements.txt
-Flask
-Flask-WTF
-Flask-Login
-python-dotenv
-Flask-SQLAlchemy
-Pydantic
+# Error al leer este archivo: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte
+
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\run.py
 # run.py
@@ -221,9 +217,8 @@ class Tarea(db.Model):
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\__init__.py
 # app/__init__.py
-# 🍺 Application Factory: define create_app()
-
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect, url_for
+from flask_login import current_user
 from .config import Config
 from .extensions import db, csrf, login_manager
 
@@ -235,71 +230,55 @@ from .blueprints.tareas import tareas_bp
 from .blueprints.usuarios import usuarios_bp
 
 def create_app():
-    # 1. Crea la app y carga configuración
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(Config)
 
-    # 2. Inicializa extensiones
+    # Inicializa extensiones
     db.init_app(app)
     csrf.init_app(app)
     login_manager.init_app(app)
 
-    # 3. Registra Blueprints
-    app.register_blueprint(auth_bp,     url_prefix="")        # login / registro
-    app.register_blueprint(admin_bp,    url_prefix="/admin")  # panel admin
-    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # perfil usuario
-    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # gestión de tareas
-    app.register_blueprint(usuarios_bp, url_prefix="/u")      # API usuarios
+    # Registra Blueprints
+    app.register_blueprint(auth_bp,     url_prefix="")        # /login, /registro
+    app.register_blueprint(admin_bp,    url_prefix="/admin")  # /admin/…
+    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # /perfil/…
+    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # /tareas/…
+    app.register_blueprint(usuarios_bp, url_prefix="/u")      # /u/…
 
-    # 4. Crea tablas SQLite en instance/taskgenie.db y semillas de prueba
+    # Crea BD y semilla
     with app.app_context():
-        db.create_all()
-
-        # Poblado inicial: tres usuarios de prueba
         from .models import Usuario, RolEnum
         from werkzeug.security import generate_password_hash
         from datetime import date
 
+        db.create_all()
+
         if not Usuario.query.first():
             inicial = [
-                {
-                    "nombre": "Americo-admin",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@keko.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.ADMIN
-                },
-                {
-                    "nombre": "Americo-profe",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@profe.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.PROFESOR
-                },
-                {
-                    "nombre": "Americo-Alum",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@alumno.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.ALUMNO
-                },
+                ("Americo-admin",  "carrillo", "amejosecar@keko.com",   "333333", "1970-12-18", RolEnum.ADMIN),
+                ("Americo-profe",  "carrillo", "amejosecar@profe.com",  "333333", "1970-12-18", RolEnum.PROFESOR),
+                ("Americo-Alum",   "carrillo", "amejosecar@alumno.com","333333", "1970-12-18", RolEnum.ALUMNO),
             ]
-            for u in inicial:
-                usuario = Usuario(
-                    nombre=u["nombre"],
-                    apellido=u["apellido"],
-                    email=u["email"],
-                    clave_hash=generate_password_hash(u["clave"]),
-                    fecha_nacimiento=date.fromisoformat(u["fecha_nacimiento"]),
-                    rol=u["rol"]
+            for nombre,apellido,email,clave,fnac,rol in inicial:
+                u = Usuario(
+                    nombre=nombre,
+                    apellido=apellido,
+                    email=email,
+                    clave_hash=generate_password_hash(clave),
+                    fecha_nacimiento=date.fromisoformat(fnac),
+                    rol=rol
                 )
-                db.session.add(usuario)
+                db.session.add(u)
             db.session.commit()
 
-    # 5. Manejador genérico de 404
+    # Ruta raíz: home → login o dashboard
+    @app.route("/")
+    def home():
+        if current_user.is_authenticated:
+            return redirect(url_for("tareas.listado"))
+        return redirect(url_for("auth.login"))
+
+    # Manejador 404
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errores.html", mensaje="Página no encontrada"), 404
@@ -308,14 +287,12 @@ def create_app():
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\admin\routes.py
+# app/blueprints/admin/routes.py
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.services.memory_repo import MemoryDB
+from app.extensions import db
 from app.models import Usuario, RolEnum
 from . import admin_bp
-
-# Instancia del stub
-db = MemoryDB()
 
 def solo_admin(fn):
     """Decorator para restringir acceso sólo a ADMIN."""
@@ -330,26 +307,26 @@ def solo_admin(fn):
 @admin_bp.route("/", methods=["GET"])
 @solo_admin
 def dashboard():
-    users = db.query(Usuario).all()
+    users = Usuario.query.all()
     return render_template("admin/dashboard_admin.html", users=users)
 
 @admin_bp.route("/user/<int:user_id>/change-role", methods=["POST"])
 @solo_admin
 def change_role(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
         user.rol = RolEnum.ADMIN if user.rol == RolEnum.USER else RolEnum.USER
-        db.commit()
+        db.session.commit()
         flash(f"Rol de {user.email} cambiado a {user.rol.value}", "success")
     return redirect(url_for("admin.dashboard"))
 
 @admin_bp.route("/user/<int:user_id>/toggle-block", methods=["POST"])
 @solo_admin
 def toggle_block(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
-        user.is_blocked = not getattr(user, "is_blocked", False)
-        db.commit()
+        user.is_blocked = not user.is_blocked
+        db.session.commit()
         estado = "bloqueado" if user.is_blocked else "desbloqueado"
         flash(f"Usuario {user.email} {estado}", "info")
     return redirect(url_for("admin.dashboard"))
@@ -357,20 +334,22 @@ def toggle_block(user_id):
 @admin_bp.route("/user/<int:user_id>/delete", methods=["POST"])
 @solo_admin
 def delete_user(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
-        db._storage["Usuario"].remove(user)
+        db.session.delete(user)
+        db.session.commit()
         flash(f"Usuario {user.email} eliminado", "warning")
     return redirect(url_for("admin.dashboard"))
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\admin\__init__.py
+# app/blueprints/admin/__init__.py
 from flask import Blueprint
 
 admin_bp = Blueprint(
     "admin",
     __name__,
-    template_folder="templates/admin"
+    template_folder="templates"   # <-- antes era "templates/admin"
 )
 
 from . import routes
@@ -464,15 +443,13 @@ class LoginForm(FlaskForm):
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\auth\routes.py
+# app/blueprints/auth/routes.py
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
-from app.services.memory_repo import MemoryDB
-from app.services.auth_service import registrar_usuario, autenticar_usuario
 from . import auth_bp
 from .forms import RegisterForm, LoginForm
-
-# Instancia global del stub en memoria
-db = MemoryDB()
+from app.services.auth_service import registrar_usuario, autenticar_usuario
+from app.models import RolEnum  # <<< importar tu Enum
 
 @auth_bp.route("/registro", methods=["GET", "POST"])
 def registro():
@@ -482,15 +459,15 @@ def registro():
     form = RegisterForm()
     if form.validate_on_submit():
         try:
+            # Convertimos el nombre de rol en RolEnum
+            rol_enum = RolEnum[form.rol.data]
             u = registrar_usuario(
-                db,
                 nombre=form.nombre.data,
                 apellido=form.apellido.data,
-                edad=form.edad.data,
                 email=form.email.data,
                 clave=form.clave.data,
                 fecha_nacimiento=form.fecha_nacimiento.data.strftime("%Y-%m-%d"),
-                rol=form.rol.data
+                rol=rol_enum
             )
             flash(f"Usuario {u.email} registrado correctamente", "success")
             return redirect(url_for("auth.login"))
@@ -506,7 +483,7 @@ def login():
 
     form = LoginForm()
     if form.validate_on_submit():
-        user = autenticar_usuario(db, email=form.email.data, clave=form.clave.data)
+        user = autenticar_usuario(email=form.email.data, clave=form.clave.data)
         if user:
             login_user(user)
             flash("Has iniciado sesión correctamente", "success")
@@ -525,15 +502,25 @@ def logout():
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\auth\__init__.py
+#app/blueprints/auth/init.py
 from flask import Blueprint
 
+# Antes tenías:
+# auth_bp = Blueprint(
+#     "auth",
+#     __name__,
+#     template_folder="templates/auth"
+# )
+
+# Ahora indicamos que el directorio 'templates' (que a su vez
+# contiene la carpeta 'auth') es la raíz de plantillas del BP:
 auth_bp = Blueprint(
-    "auth", 
-    __name__, 
-    template_folder="templates/auth"
+    "auth",
+    __name__,
+    template_folder="templates"
 )
 
-# Importamos las rutas para que se registren
+# Importa las rutas para que se registren
 from . import routes
 
 ----------------------------------------
@@ -619,30 +606,28 @@ content %}
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\tareas\routes.py
+# app/blueprints/tareas/routes.py
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required
-from app.services.memory_repo import MemoryDB
+from app.extensions import db
 from app.models import Tarea
 from . import tareas_bp
-
-# Stub en memoria (mismo que en auth)
-db = MemoryDB()
 
 @tareas_bp.route("/", methods=["GET"])
 @login_required
 def listado():
-    tareas = db.query(Tarea).all()
+    tareas = Tarea.query.all()
     return render_template("tareas/listado.html", tareas=tareas)
 
 @tareas_bp.route("/nueva", methods=["GET", "POST"])
 @login_required
 def nueva():
     if request.method == "POST":
-        titulo = request.form.get("titulo")
-        descripcion = request.form.get("descripcion")
-        tarea = Tarea(titulo=titulo, descripcion=descripcion, completada=False)
-        db.add(tarea)
-        db.commit()
+        titulo = request.form.get("titulo", "").strip()
+        descripcion = request.form.get("descripcion", "").strip()
+        tarea = Tarea(titulo=titulo, descripcion=descripcion)
+        db.session.add(tarea)
+        db.session.commit()
         flash("Tarea creada con éxito", "success")
         return redirect(url_for("tareas.listado"))
     return render_template("tareas/form.html", accion="Nueva Tarea", tarea=None)
@@ -650,16 +635,16 @@ def nueva():
 @tareas_bp.route("/<int:tarea_id>/editar", methods=["GET", "POST"])
 @login_required
 def editar(tarea_id):
-    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    tarea = Tarea.query.get(tarea_id)
     if not tarea:
         flash("Tarea no encontrada", "danger")
         return redirect(url_for("tareas.listado"))
 
     if request.method == "POST":
-        tarea.titulo = request.form.get("titulo")
-        tarea.descripcion = request.form.get("descripcion")
-        tarea.completada = "completada" in request.form
-        db.commit()
+        tarea.titulo      = request.form.get("titulo", "").strip()
+        tarea.descripcion = request.form.get("descripcion", "").strip()
+        tarea.completada  = "completada" in request.form
+        db.session.commit()
         flash("Tarea actualizada", "success")
         return redirect(url_for("tareas.listado"))
 
@@ -668,7 +653,7 @@ def editar(tarea_id):
 @tareas_bp.route("/<int:tarea_id>/ver", methods=["GET"])
 @login_required
 def detalle(tarea_id):
-    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    tarea = Tarea.query.get(tarea_id)
     if not tarea:
         flash("Tarea no encontrada", "danger")
         return redirect(url_for("tareas.listado"))
@@ -677,23 +662,24 @@ def detalle(tarea_id):
 @tareas_bp.route("/<int:tarea_id>/eliminar", methods=["POST"])
 @login_required
 def eliminar(tarea_id):
-    tarea = db.query(Tarea).filter_by(id=tarea_id).first()
+    tarea = Tarea.query.get(tarea_id)
     if tarea:
-        db._storage["Tarea"].remove(tarea)
+        db.session.delete(tarea)
+        db.session.commit()
         flash("Tarea eliminada", "info")
     return redirect(url_for("tareas.listado"))
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\tareas\__init__.py
+# app/blueprints/tareas/__init__.py
 from flask import Blueprint
 
 tareas_bp = Blueprint(
     "tareas",
     __name__,
-    template_folder="templates/tareas"
+    template_folder="templates"   # <-- antes era "templates/tareas"
 )
 
-# Importa las rutas para que Flask las registre
 from . import routes
 
 ----------------------------------------
@@ -779,24 +765,20 @@ content %}
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\usuarios\routes.py
+# app/blueprints/usuarios/routes.py
 from flask import request, jsonify, abort
-from app.services.memory_repo import MemoryDB
-from app.services.auth_service import registrar_usuario
 from app.models import Usuario, RolEnum
+from app.services.auth_service import registrar_usuario
+from app.extensions import db
 from . import usuarios_bp
-
-# Stub en memoria
-db = MemoryDB()
 
 @usuarios_bp.route("/registro-json", methods=["POST"])
 def registro_json():
     data = request.get_json() or {}
     try:
         user = registrar_usuario(
-            db,
             nombre=data["nombre"],
             apellido=data["apellido"],
-            edad=data["edad"],
             email=data["email"],
             clave=data["clave"],
             fecha_nacimiento=data["fecha_nacimiento"],
@@ -816,7 +798,7 @@ def registro_json():
 
 @usuarios_bp.route("/<int:user_id>", methods=["GET"])
 def get_usuario(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if not user:
         abort(404, description="Usuario no encontrado")
     return jsonify({
@@ -825,15 +807,15 @@ def get_usuario(user_id):
         "nombre": user.nombre,
         "apellido": user.apellido,
         "edad": user.edad,
-        "fecha_nacimiento": user.fecha_nacimiento,
+        "fecha_nacimiento": user.fecha_nacimiento.isoformat(),
         "rol": user.rol.value
     })
 
 @usuarios_bp.route("/buscar", methods=["GET"])
 def buscar_usuarios():
     email = request.args.get("email")
-    rol = request.args.get("rol")
-    qs = db.query(Usuario)
+    rol   = request.args.get("rol")
+    qs = Usuario.query
     if email:
         qs = qs.filter_by(email=email)
     if rol:
@@ -841,6 +823,7 @@ def buscar_usuarios():
             qs = qs.filter_by(rol=RolEnum[rol])
         except KeyError:
             return jsonify({"error": "Rol inválido"}), 400
+
     users = qs.all()
     return jsonify([{
         "id": u.id,
@@ -848,7 +831,7 @@ def buscar_usuarios():
         "nombre": u.nombre,
         "apellido": u.apellido,
         "edad": u.edad,
-        "fecha_nacimiento": u.fecha_nacimiento,
+        "fecha_nacimiento": u.fecha_nacimiento.isoformat(),
         "rol": u.rol.value
     } for u in users])
 
@@ -897,34 +880,38 @@ content %}
 # C:\americo\API\TaskGenie_flask\app\services\auth_service.py
 # app/services/auth_service.py
 
+# app/services/auth_service.py
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-from ..models import Usuario, RolEnum
+from app.models import Usuario, RolEnum
+from app.extensions import db
 
-def registrar_usuario(db, nombre, apellido, edad, email, clave, fecha_nacimiento, rol=RolEnum.USER):
-    # 1) Validaciones (unicidad de email, formato de fecha…)
-    if db.query(Usuario).filter_by(email=email).first():
+def registrar_usuario(nombre: str,
+                      apellido: str,
+                      email: str,
+                      clave: str,
+                      fecha_nacimiento: str,
+                      rol: RolEnum = RolEnum.USER) -> Usuario:
+    # 1) Unicidad de email
+    if Usuario.query.filter_by(email=email).first():
         raise ValueError("Email ya registrado")
 
-    # 2) Crear instancia
+    # 2) Crear y persistir
     usuario = Usuario(
         nombre=nombre,
         apellido=apellido,
-        edad=edad, 
         email=email,
         clave_hash=generate_password_hash(clave),
         fecha_nacimiento=datetime.strptime(fecha_nacimiento, "%Y-%m-%d").date(),
         rol=rol
     )
-
-    # 3) Persistir
-    db.add(usuario)
-    db.commit()
-    db.refresh(usuario)
+    db.session.add(usuario)
+    db.session.commit()
+    # db.session.refresh(usuario)  # SQLAlchemy ya lo actualiza con el ID
     return usuario
 
-def autenticar_usuario(db, email, clave):
-    usuario = db.query(Usuario).filter_by(email=email).first()
+def autenticar_usuario(email: str, clave: str) -> Usuario | None:
+    usuario = Usuario.query.filter_by(email=email).first()
     if not usuario or not check_password_hash(usuario.clave_hash, clave):
         return None
     return usuario
@@ -994,7 +981,7 @@ class MemoryDB:
     <title>{% block title %}TaskGenie{% endblock %}</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}"
+      href="{{ url_for('static', filename='css/style.css') }}"
     />
   </head>
   <body>

@@ -1,7 +1,6 @@
 # app/__init__.py
-# 🍺 Application Factory: define create_app()
-
-from flask import Flask, render_template
+from flask import Flask, render_template, redirect, url_for
+from flask_login import current_user
 from .config import Config
 from .extensions import db, csrf, login_manager
 
@@ -13,71 +12,60 @@ from .blueprints.tareas import tareas_bp
 from .blueprints.usuarios import usuarios_bp
 
 def create_app():
-    # 1. Crea la app y carga configuración
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(Config)
 
-    # 2. Inicializa extensiones
+    # Inicializa extensiones
     db.init_app(app)
     csrf.init_app(app)
     login_manager.init_app(app)
 
-    # 3. Registra Blueprints
-    app.register_blueprint(auth_bp,     url_prefix="")        # login / registro
-    app.register_blueprint(admin_bp,    url_prefix="/admin")  # panel admin
-    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # perfil usuario
-    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # gestión de tareas
-    app.register_blueprint(usuarios_bp, url_prefix="/u")      # API usuarios
+    # Registra Blueprints
+    app.register_blueprint(auth_bp,     url_prefix="")        # /login, /registro
+    app.register_blueprint(admin_bp,    url_prefix="/admin")  # /admin/…
+    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # /perfil/…
+    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # /tareas/…
+    app.register_blueprint(usuarios_bp, url_prefix="/u")      # /u/…
 
-    # 4. Crea tablas SQLite en instance/taskgenie.db y semillas de prueba
+    # Crea BD y semilla
     with app.app_context():
-        db.create_all()
-
-        # Poblado inicial: tres usuarios de prueba
         from .models import Usuario, RolEnum
         from werkzeug.security import generate_password_hash
         from datetime import date
 
+        db.create_all()
+
         if not Usuario.query.first():
             inicial = [
-                {
-                    "nombre": "Americo-admin",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@keko.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.ADMIN
-                },
-                {
-                    "nombre": "Americo-profe",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@profe.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.PROFESOR
-                },
-                {
-                    "nombre": "Americo-Alum",
-                    "apellido": "carrillo",
-                    "email": "amejosecar@alumno.com",
-                    "clave": "333333",
-                    "fecha_nacimiento": "1970-12-18",
-                    "rol": RolEnum.ALUMNO
-                },
+                ("Americo-admin",  "carrillo", "amejosecar@keko.com",   "333333", "1970-12-18", RolEnum.ADMIN),
+                ("Americo-profe",  "carrillo", "amejosecar@profe.com",  "333333", "1970-12-18", RolEnum.PROFESOR),
+                ("Americo-Alum",   "carrillo", "amejosecar@alumno.com","333333", "1970-12-18", RolEnum.ALUMNO),
             ]
-            for u in inicial:
-                usuario = Usuario(
-                    nombre=u["nombre"],
-                    apellido=u["apellido"],
-                    email=u["email"],
-                    clave_hash=generate_password_hash(u["clave"]),
-                    fecha_nacimiento=date.fromisoformat(u["fecha_nacimiento"]),
-                    rol=u["rol"]
+            for nombre,apellido,email,clave,fnac,rol in inicial:
+                u = Usuario(
+                    nombre=nombre,
+                    apellido=apellido,
+                    email=email,
+                    clave_hash=generate_password_hash(clave),
+                    fecha_nacimiento=date.fromisoformat(fnac),
+                    rol=rol
                 )
-                db.session.add(usuario)
+                db.session.add(u)
             db.session.commit()
 
-    # 5. Manejador genérico de 404
+    # Ruta raíz: home → login o dashboard
+    @app.route("/")
+    def home():
+        if current_user.is_authenticated:
+        # Admin va siempre a su panel
+            if current_user.rol.name == "ADMIN":
+                return redirect(url_for("admin.dashboard"))
+        # Profesores/Alumnos al listado de tareas
+            return redirect(url_for("tareas.listado"))
+        return redirect(url_for("auth.login"))
+
+
+    # Manejador 404
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errores.html", mensaje="Página no encontrada"), 404

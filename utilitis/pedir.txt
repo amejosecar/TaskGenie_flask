@@ -1,0 +1,7 @@
+Como experto Full-Stack con sólida experiencia en Flask, SQLAlchemy, Jinja2, WTForms 
+(CSRF), dotenv, Blueprints y modularización; 
+
+1ero lee el paso_a_paso.md creado por copailot
+2do respeta la estrucuura ya creada
+desarrolla el paso ## 
+es decir construye el codigo de los archivos involucrados (nuevoso o a modificar)

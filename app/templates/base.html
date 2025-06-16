@@ -6,30 +6,37 @@
     <title>{% block title %}TaskGenie{% endblock %}</title>
     <link
       rel="stylesheet"
-      href="{{ url_for('static', filename='style.css') }}"
+      href="{{ url_for('static', filename='css/style.css') }}"
     />
   </head>
   <body>
+    {# Solo mostramos la nav si NO estamos en login o registro #} {% if
+    request.endpoint not in ['auth.login', 'auth.registro'] %}
     <header>
       <nav>
-        <a href="{{ url_for('auth.login') }}">Login</a>
-        {% if current_user.is_authenticated %}
-        <a href="{{ url_for('tareas.listado') }}">Tareas</a>
-        <a href="{{ url_for('perfil.index') }}">Perfil</a>
-        {% if current_user.rol.name == 'ADMIN' %}
-        <a href="{{ url_for('admin.dashboard') }}">Admin</a>
-        {% endif %}
-        <a href="{{ url_for('auth.logout') }}">Logout</a>
+        {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('auth.login') }}">Ingresar</a>
+
+        {% elif current_user.rol.name == 'ADMIN' %}
+        <a href="{{ url_for('perfil.index') }}">Mi Perfil</a>
+        <a href="{{ url_for('admin.dashboard') }}">Panel Admin</a>
+        <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+
+        {% elif current_user.rol.name in ['PROFESOR', 'ALUMNO'] %}
+        <a href="{{ url_for('tareas.listado') }}">Mis Tareas</a>
+        <a href="{{ url_for('perfil.index') }}">Mi Perfil</a>
+        <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
         {% endif %}
       </nav>
     </header>
+    {% endif %}
 
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %} {% if
       messages %}
       <ul class="flashes">
-        {% for category, msg in messages %}
-        <li class="{{ category }}">{{ msg }}</li>
+        {% for cat, msg in messages %}
+        <li class="{{ cat }}">{{ msg }}</li>
         {% endfor %}
       </ul>
       {% endif %} {% endwith %} {% block content %}{% endblock %}

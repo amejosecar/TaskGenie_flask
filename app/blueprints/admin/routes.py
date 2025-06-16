@@ -1,11 +1,9 @@
+# app/blueprints/admin/routes.py
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
-from app.services.memory_repo import MemoryDB
+from app.extensions import db
 from app.models import Usuario, RolEnum
 from . import admin_bp
-
-# Instancia del stub
-db = MemoryDB()
 
 def solo_admin(fn):
     """Decorator para restringir acceso sólo a ADMIN."""
@@ -20,26 +18,26 @@ def solo_admin(fn):
 @admin_bp.route("/", methods=["GET"])
 @solo_admin
 def dashboard():
-    users = db.query(Usuario).all()
+    users = Usuario.query.all()
     return render_template("admin/dashboard_admin.html", users=users)
 
 @admin_bp.route("/user/<int:user_id>/change-role", methods=["POST"])
 @solo_admin
 def change_role(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
         user.rol = RolEnum.ADMIN if user.rol == RolEnum.USER else RolEnum.USER
-        db.commit()
+        db.session.commit()
         flash(f"Rol de {user.email} cambiado a {user.rol.value}", "success")
     return redirect(url_for("admin.dashboard"))
 
 @admin_bp.route("/user/<int:user_id>/toggle-block", methods=["POST"])
 @solo_admin
 def toggle_block(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
-        user.is_blocked = not getattr(user, "is_blocked", False)
-        db.commit()
+        user.is_blocked = not user.is_blocked
+        db.session.commit()
         estado = "bloqueado" if user.is_blocked else "desbloqueado"
         flash(f"Usuario {user.email} {estado}", "info")
     return redirect(url_for("admin.dashboard"))
@@ -47,8 +45,9 @@ def toggle_block(user_id):
 @admin_bp.route("/user/<int:user_id>/delete", methods=["POST"])
 @solo_admin
 def delete_user(user_id):
-    user = db.query(Usuario).filter_by(id=user_id).first()
+    user = Usuario.query.get(user_id)
     if user:
-        db._storage["Usuario"].remove(user)
+        db.session.delete(user)
+        db.session.commit()
         flash(f"Usuario {user.email} eliminado", "warning")
     return redirect(url_for("admin.dashboard"))

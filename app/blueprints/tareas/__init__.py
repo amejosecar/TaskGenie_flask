@@ -1,10 +1,10 @@
+# app/blueprints/tareas/__init__.py
 from flask import Blueprint
 
 tareas_bp = Blueprint(
     "tareas",
     __name__,
-    template_folder="templates/tareas"
+    template_folder="templates"   # <-- antes era "templates/tareas"
 )
 
-# Importa las rutas para que Flask las registre
 from . import routes
