@@ -1,8 +1,8 @@
-{% extends 'base.html' %} {% block title %}{{ accion }}{% endblock %} {% block
-content %}
+{# File: app/blueprints/tareas/templates/tareas/form.html #} {% extends
+'base.html' %} {% block title %}{{ accion }}{% endblock %} {% block content %}
 <h2>{{ accion }}</h2>
 <form method="post">
-  {{ csrf_token() }}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
   <p>
     <label>Título</label><br />
     <input
@@ -37,3 +37,4 @@ content %}
   <p><button type="submit">Guardar</button></p>
 </form>
 {% endblock %}
+<!-- File: app/blueprints/tareas/templates/tareas/form.html -->

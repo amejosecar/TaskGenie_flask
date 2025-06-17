@@ -1,13 +1,16 @@
 # app/blueprints/usuarios/routes.py
+# app/blueprints/usuarios/routes.py
 from flask import request, jsonify, abort
 from app.models import Usuario, RolEnum
 from app.services.auth_service import registrar_usuario
-from app.extensions import db
+from app.extensions import db, csrf
 from . import usuarios_bp
 
+# Eximimos CSRF solo aquí
+@csrf.exempt
 @usuarios_bp.route("/registro-json", methods=["POST"])
 def registro_json():
-    data = request.get_json() or {}
+    data = request.get_json(force=True) or {}
     try:
         user = registrar_usuario(
             nombre=data["nombre"],

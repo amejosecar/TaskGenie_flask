@@ -1,6 +1,7 @@
 # app/services/auth_service.py
 
 # app/services/auth_service.py
+# app/services/auth_service.py
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from app.models import Usuario, RolEnum
@@ -12,11 +13,8 @@ def registrar_usuario(nombre: str,
                       clave: str,
                       fecha_nacimiento: str,
                       rol: RolEnum = RolEnum.USER) -> Usuario:
-    # 1) Unicidad de email
     if Usuario.query.filter_by(email=email).first():
         raise ValueError("Email ya registrado")
-
-    # 2) Crear y persistir
     usuario = Usuario(
         nombre=nombre,
         apellido=apellido,
@@ -27,11 +25,13 @@ def registrar_usuario(nombre: str,
     )
     db.session.add(usuario)
     db.session.commit()
-    # db.session.refresh(usuario)  # SQLAlchemy ya lo actualiza con el ID
     return usuario
 
 def autenticar_usuario(email: str, clave: str) -> Usuario | None:
     usuario = Usuario.query.filter_by(email=email).first()
+    # denegar si no existe, clave incorrecta o está bloqueado
     if not usuario or not check_password_hash(usuario.clave_hash, clave):
         return None
+    if usuario.is_blocked:
+        raise PermissionError("Usuario bloqueado")
     return usuario

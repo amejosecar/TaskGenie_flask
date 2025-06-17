@@ -1,3 +1,5 @@
+Creado el 2025-06-17 14:18:52
+
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\.env
 DATABASE_URL=sqlite:///instance/taskgenie.db
@@ -138,32 +140,36 @@ class Config:
 # C:\americo\API\TaskGenie_flask\app\extensions.py
 # app/extensions.py
 # 🔌 Inicializa extensiones: ORM, CSRF, Login
-
 # app/extensions.py
-
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import MetaData
 from flask_wtf import CSRFProtect
 from flask_login import LoginManager
+from flask_migrate import Migrate
 
-# ORM: maneja la conexión y los modelos
-db = SQLAlchemy()
+# naming convention para que Alembic autogenere nombres de constraints
+naming_convention = {
+    "ix": "ix_%(column_0_label)s",
+    "uq": "uq_%(table_name)s_%(column_0_name)s",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s"
+}
+metadata = MetaData(naming_convention=naming_convention)
 
-# Protege todos los formularios de ataques CSRF
+db = SQLAlchemy(metadata=metadata)
 csrf = CSRFProtect()
-
-# Gestiona login/logout y la sesión del usuario
 login_manager = LoginManager()
-login_manager.login_view = "auth.login"      
-login_manager.session_protection = "strong"  
+migrate = Migrate()
+
+login_manager.login_view = "auth.login"
+login_manager.session_protection = "strong"
 
 @login_manager.user_loader
 def load_user(user_id: str):
-    """
-    Callback para Flask-Login: carga un Usuario dado su ID desde la sesión.
-    Importamos aquí para evitar circular imports.
-    """
     from app.models import Usuario
     return db.session.get(Usuario, int(user_id))
+
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\models.py
@@ -192,24 +198,122 @@ class Usuario(UserMixin, db.Model):
     rol              = db.Column(db.Enum(RolEnum), default=RolEnum.USER, nullable=False)
     is_blocked       = db.Column(db.Boolean, default=False)
 
+    # 1) Tareas creadas por el usuario
+    tareas_creadas = db.relationship(
+        "Tarea",
+        foreign_keys="Tarea.user_id",
+        back_populates="usuario",
+        cascade="all, delete-orphan"
+    )
+
+    # 2) Tareas asignadas al usuario
+    tareas_recibidas = db.relationship(
+        "Tarea",
+        foreign_keys="Tarea.asignado_a_id",
+        back_populates="asignado_a"
+    )
+
     def __repr__(self):
         return f"<Usuario {self.email}>"
 
     @property
     def edad(self) -> int:
-        """Calcula la edad a partir de la fecha de nacimiento."""
         today = date.today()
-        born = self.fecha_nacimiento
+        born  = self.fecha_nacimiento
         return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
-class Tarea(db.Model):
-    __tablename__  = "tareas"
 
-    id             = db.Column(db.Integer, primary_key=True)
-    titulo         = db.Column(db.String(100), nullable=False)
-    descripcion    = db.Column(db.Text, nullable=True)
-    completada     = db.Column(db.Boolean, default=False)
-    fecha_creacion = db.Column(db.Date, default=date.today)
+class Importancia(db.Model):
+    __tablename__ = "tb_importancia"
+
+    cod_id           = db.Column(db.String(2), primary_key=True)
+    tipo_importancia = db.Column(db.String(20), nullable=False)
+    desc_importancia = db.Column(db.String(100), nullable=False)
+
+    tareas = db.relationship(
+        "Tarea",
+        back_populates="importancia"
+    )
+
+    def __repr__(self):
+        return f"<Importancia {self.cod_id} {self.tipo_importancia}>"
+
+
+class EstadoTarea(db.Model):
+    __tablename__ = "tb_estado_tarea"
+
+    cod_id            = db.Column(db.String(2), primary_key=True)
+    desc_estado_tarea = db.Column(db.String(50), nullable=False)
+
+    tareas = db.relationship(
+        "Tarea",
+        back_populates="estado"
+    )
+
+    def __repr__(self):
+        return f"<EstadoTarea {self.cod_id} {self.desc_estado_tarea}>"
+
+
+class TareaCalificada(db.Model):
+    __tablename__         = "tb_tarea_calificada"
+
+    cod_id_califica       = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cod_id_tarea          = db.Column(db.Integer, db.ForeignKey("tareas.id"), nullable=False)
+    fecha_calificado      = db.Column(db.Date, nullable=True)
+    texto_calificado      = db.Column(db.Text, nullable=True)
+    puntuacion_calificado = db.Column(db.Integer, nullable=True)
+    estatus_calificado    = db.Column(db.String(2), nullable=False, default="no")
+
+    tarea = db.relationship(
+        "Tarea",
+        back_populates="calificaciones",
+        foreign_keys=[cod_id_tarea]
+    )
+
+    def __repr__(self):
+        return f"<TareaCalificada {self.cod_id_califica} tarea={self.cod_id_tarea}>"
+
+
+class Tarea(db.Model):
+    __tablename__ = "tareas"
+
+    id               = db.Column(db.Integer, primary_key=True)
+    titulo           = db.Column(db.String(100), nullable=False)
+    descripcion      = db.Column(db.Text, nullable=True)
+    completada       = db.Column(db.Boolean, default=False)
+    fecha_creacion   = db.Column(db.Date, default=date.today)
+    fecha_entrega    = db.Column(db.Date, nullable=True)
+
+    user_id          = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=False)
+    importancia_id   = db.Column(db.String(2), db.ForeignKey("tb_importancia.cod_id"), nullable=True)
+    estado_id        = db.Column(db.String(2), db.ForeignKey("tb_estado_tarea.cod_id"), nullable=True)
+    asignado_a_id    = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=True)
+    calificacion_id  = db.Column(db.Integer, db.ForeignKey("tb_tarea_calificada.cod_id_califica"), nullable=True)
+
+    usuario        = db.relationship(
+        "Usuario",
+        foreign_keys=[user_id],
+        back_populates="tareas_creadas"
+    )
+    asignado_a     = db.relationship(
+        "Usuario",
+        foreign_keys=[asignado_a_id],
+        back_populates="tareas_recibidas"
+    )
+    importancia    = db.relationship(
+        "Importancia",
+        back_populates="tareas"
+    )
+    estado         = db.relationship(
+        "EstadoTarea",
+        back_populates="tareas"
+    )
+    calificaciones = db.relationship(
+        "TareaCalificada",
+        back_populates="tarea",
+        cascade="all, delete-orphan",
+        foreign_keys="[TareaCalificada.cod_id_tarea]"
+    )
 
     def __repr__(self):
         return f"<Tarea {self.id} {self.titulo}>"
@@ -217,12 +321,13 @@ class Tarea(db.Model):
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\__init__.py
 # app/__init__.py
+# app/__init__.py
 from flask import Flask, render_template, redirect, url_for
 from flask_login import current_user
 from .config import Config
-from .extensions import db, csrf, login_manager
+from .extensions import db, csrf, login_manager, migrate
 
-# Importa tus Blueprints
+# Importa blueprints
 from .blueprints.auth import auth_bp
 from .blueprints.admin import admin_bp
 from .blueprints.perfil import perfil_bp
@@ -235,24 +340,24 @@ def create_app():
 
     # Inicializa extensiones
     db.init_app(app)
+    migrate.init_app(app, db)
     csrf.init_app(app)
     login_manager.init_app(app)
 
     # Registra Blueprints
-    app.register_blueprint(auth_bp,     url_prefix="")        # /login, /registro
-    app.register_blueprint(admin_bp,    url_prefix="/admin")  # /admin/…
-    app.register_blueprint(perfil_bp,   url_prefix="/perfil") # /perfil/…
-    app.register_blueprint(tareas_bp,   url_prefix="/tareas") # /tareas/…
-    app.register_blueprint(usuarios_bp, url_prefix="/u")      # /u/…
+    app.register_blueprint(auth_bp,     url_prefix="")
+    app.register_blueprint(admin_bp,    url_prefix="/admin")
+    app.register_blueprint(perfil_bp,   url_prefix="/perfil")
+    app.register_blueprint(tareas_bp,   url_prefix="/tareas")
+    app.register_blueprint(usuarios_bp, url_prefix="/u")
 
-    # Crea BD y semilla
+    # Seed inicial (idéntico al original)...
     with app.app_context():
-        from .models import Usuario, RolEnum
+        from .models import Usuario, RolEnum, Tarea
         from werkzeug.security import generate_password_hash
         from datetime import date
 
         db.create_all()
-
         if not Usuario.query.first():
             inicial = [
                 ("Americo-admin",  "carrillo", "amejosecar@keko.com",   "333333", "1970-12-18", RolEnum.ADMIN),
@@ -271,14 +376,14 @@ def create_app():
                 db.session.add(u)
             db.session.commit()
 
-    # Ruta raíz: home → login o dashboard
     @app.route("/")
     def home():
         if current_user.is_authenticated:
+            if current_user.rol == Config.RolEnum.ADMIN:
+                return redirect(url_for("admin.dashboard"))
             return redirect(url_for("tareas.listado"))
         return redirect(url_for("auth.login"))
 
-    # Manejador 404
     @app.errorhandler(404)
     def not_found(e):
         return render_template("errores.html", mensaje="Página no encontrada"), 404
@@ -479,7 +584,7 @@ def registro():
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("tareas.listado"))
+        return redirect(url_for("home"))
 
     form = LoginForm()
     if form.validate_on_submit():
@@ -487,11 +592,15 @@ def login():
         if user:
             login_user(user)
             flash("Has iniciado sesión correctamente", "success")
-            next_page = request.args.get("next") or url_for("tareas.listado")
-            return redirect(next_page)
+            # Admin al dashboard, resto a tareas
+            if user.rol.name == "ADMIN":
+                return redirect(url_for("admin.dashboard"))
+            return redirect(url_for("tareas.listado"))
+
         flash("Email o contraseña incorrectos", "danger")
 
     return render_template("auth/login.html", form=form)
+
 
 @auth_bp.route("/logout")
 @login_required
@@ -607,8 +716,9 @@ content %}
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\tareas\routes.py
 # app/blueprints/tareas/routes.py
-from flask import render_template, request, redirect, url_for, flash
-from flask_login import login_required
+# app/blueprints/tareas/routes.py
+from flask import render_template, request, redirect, url_for, flash, abort
+from flask_login import login_required, current_user
 from app.extensions import db
 from app.models import Tarea
 from . import tareas_bp
@@ -616,7 +726,7 @@ from . import tareas_bp
 @tareas_bp.route("/", methods=["GET"])
 @login_required
 def listado():
-    tareas = Tarea.query.all()
+    tareas = Tarea.query.filter_by(user_id=current_user.id).all()
     return render_template("tareas/listado.html", tareas=tareas)
 
 @tareas_bp.route("/nueva", methods=["GET", "POST"])
@@ -625,21 +735,23 @@ def nueva():
     if request.method == "POST":
         titulo = request.form.get("titulo", "").strip()
         descripcion = request.form.get("descripcion", "").strip()
-        tarea = Tarea(titulo=titulo, descripcion=descripcion)
+        tarea = Tarea(titulo=titulo, descripcion=descripcion, user_id=current_user.id)
         db.session.add(tarea)
         db.session.commit()
         flash("Tarea creada con éxito", "success")
         return redirect(url_for("tareas.listado"))
     return render_template("tareas/form.html", accion="Nueva Tarea", tarea=None)
 
+def _get_own_task_or_404(tarea_id):
+    tarea = Tarea.query.get(tarea_id)
+    if not tarea or tarea.user_id != current_user.id:
+        abort(404)
+    return tarea
+
 @tareas_bp.route("/<int:tarea_id>/editar", methods=["GET", "POST"])
 @login_required
 def editar(tarea_id):
-    tarea = Tarea.query.get(tarea_id)
-    if not tarea:
-        flash("Tarea no encontrada", "danger")
-        return redirect(url_for("tareas.listado"))
-
+    tarea = _get_own_task_or_404(tarea_id)
     if request.method == "POST":
         tarea.titulo      = request.form.get("titulo", "").strip()
         tarea.descripcion = request.form.get("descripcion", "").strip()
@@ -647,26 +759,21 @@ def editar(tarea_id):
         db.session.commit()
         flash("Tarea actualizada", "success")
         return redirect(url_for("tareas.listado"))
-
     return render_template("tareas/form.html", accion="Editar Tarea", tarea=tarea)
 
 @tareas_bp.route("/<int:tarea_id>/ver", methods=["GET"])
 @login_required
 def detalle(tarea_id):
-    tarea = Tarea.query.get(tarea_id)
-    if not tarea:
-        flash("Tarea no encontrada", "danger")
-        return redirect(url_for("tareas.listado"))
+    tarea = _get_own_task_or_404(tarea_id)
     return render_template("tareas/detalle.html", tarea=tarea)
 
 @tareas_bp.route("/<int:tarea_id>/eliminar", methods=["POST"])
 @login_required
 def eliminar(tarea_id):
-    tarea = Tarea.query.get(tarea_id)
-    if tarea:
-        db.session.delete(tarea)
-        db.session.commit()
-        flash("Tarea eliminada", "info")
+    tarea = _get_own_task_or_404(tarea_id)
+    db.session.delete(tarea)
+    db.session.commit()
+    flash("Tarea eliminada", "info")
     return redirect(url_for("tareas.listado"))
 
 ----------------------------------------
@@ -697,11 +804,11 @@ content %}
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\tareas\templates\tareas\form.html
-{% extends 'base.html' %} {% block title %}{{ accion }}{% endblock %} {% block
-content %}
+{# File: app/blueprints/tareas/templates/tareas/form.html #} {% extends
+'base.html' %} {% block title %}{{ accion }}{% endblock %} {% block content %}
 <h2>{{ accion }}</h2>
 <form method="post">
-  {{ csrf_token() }}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
   <p>
     <label>Título</label><br />
     <input
@@ -736,11 +843,12 @@ content %}
   <p><button type="submit">Guardar</button></p>
 </form>
 {% endblock %}
+<!-- File: app/blueprints/tareas/templates/tareas/form.html -->
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\tareas\templates\tareas\listado.html
-{% extends 'base.html' %} {% block title %}Mis Tareas{% endblock %} {% block
-content %}
+{# File: app/blueprints/tareas/templates/tareas/listado.html #} {% extends
+'base.html' %} {% block title %}Mis Tareas{% endblock %} {% block content %}
 <h2>Mis Tareas</h2>
 <p><a href="{{ url_for('tareas.nueva') }}">Crear nueva tarea</a></p>
 <ul>
@@ -755,26 +863,33 @@ content %}
       method="post"
       style="display: inline"
     >
-      {{ csrf_token() }}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
       <button type="submit">Eliminar</button>
     </form>
   </li>
+  {% else %}
+  <li>No tienes tareas aún.</li>
   {% endfor %}
 </ul>
 {% endblock %}
 
+<!-- File: app/blueprints/tareas/templates/tareas/listado.html -->
+
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\usuarios\routes.py
+# app/blueprints/usuarios/routes.py
 # app/blueprints/usuarios/routes.py
 from flask import request, jsonify, abort
 from app.models import Usuario, RolEnum
 from app.services.auth_service import registrar_usuario
-from app.extensions import db
+from app.extensions import db, csrf
 from . import usuarios_bp
 
+# Eximimos CSRF solo aquí
+@csrf.exempt
 @usuarios_bp.route("/registro-json", methods=["POST"])
 def registro_json():
-    data = request.get_json() or {}
+    data = request.get_json(force=True) or {}
     try:
         user = registrar_usuario(
             nombre=data["nombre"],
@@ -881,6 +996,7 @@ content %}
 # app/services/auth_service.py
 
 # app/services/auth_service.py
+# app/services/auth_service.py
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from app.models import Usuario, RolEnum
@@ -892,11 +1008,8 @@ def registrar_usuario(nombre: str,
                       clave: str,
                       fecha_nacimiento: str,
                       rol: RolEnum = RolEnum.USER) -> Usuario:
-    # 1) Unicidad de email
     if Usuario.query.filter_by(email=email).first():
         raise ValueError("Email ya registrado")
-
-    # 2) Crear y persistir
     usuario = Usuario(
         nombre=nombre,
         apellido=apellido,
@@ -907,13 +1020,15 @@ def registrar_usuario(nombre: str,
     )
     db.session.add(usuario)
     db.session.commit()
-    # db.session.refresh(usuario)  # SQLAlchemy ya lo actualiza con el ID
     return usuario
 
 def autenticar_usuario(email: str, clave: str) -> Usuario | None:
     usuario = Usuario.query.filter_by(email=email).first()
+    # denegar si no existe, clave incorrecta o está bloqueado
     if not usuario or not check_password_hash(usuario.clave_hash, clave):
         return None
+    if usuario.is_blocked:
+        raise PermissionError("Usuario bloqueado")
     return usuario
 
 ----------------------------------------
@@ -985,26 +1100,33 @@ class MemoryDB:
     />
   </head>
   <body>
+    {# Solo mostramos la nav si NO estamos en login o registro #} {% if
+    request.endpoint not in ['auth.login', 'auth.registro'] %}
     <header>
       <nav>
-        <a href="{{ url_for('auth.login') }}">Login</a>
-        {% if current_user.is_authenticated %}
-        <a href="{{ url_for('tareas.listado') }}">Tareas</a>
-        <a href="{{ url_for('perfil.index') }}">Perfil</a>
-        {% if current_user.rol.name == 'ADMIN' %}
-        <a href="{{ url_for('admin.dashboard') }}">Admin</a>
-        {% endif %}
-        <a href="{{ url_for('auth.logout') }}">Logout</a>
+        {% if not current_user.is_authenticated %}
+        <a href="{{ url_for('auth.login') }}">Ingresar</a>
+
+        {% elif current_user.rol.name == 'ADMIN' %}
+        <a href="{{ url_for('perfil.index') }}">Mi Perfil</a>
+        <a href="{{ url_for('admin.dashboard') }}">Panel Admin</a>
+        <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+
+        {% elif current_user.rol.name in ['PROFESOR', 'ALUMNO'] %}
+        <a href="{{ url_for('tareas.listado') }}">Mis Tareas</a>
+        <a href="{{ url_for('perfil.index') }}">Mi Perfil</a>
+        <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
         {% endif %}
       </nav>
     </header>
+    {% endif %}
 
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %} {% if
       messages %}
       <ul class="flashes">
-        {% for category, msg in messages %}
-        <li class="{{ category }}">{{ msg }}</li>
+        {% for cat, msg in messages %}
+        <li class="{{ cat }}">{{ msg }}</li>
         {% endfor %}
       </ul>
       {% endif %} {% endwith %} {% block content %}{% endblock %}
@@ -1044,4 +1166,241 @@ content %}
   <a href="{{ url_for('auth.login') }}">Volver al inicio</a>
 </section>
 {% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\static\css\styles.css
+# Error al leer este archivo: [Errno 2] No such file or directory: 'C:\\americo\\API\\TaskGenie_flask\\app\\static\\css\\styles.css'
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\versions\2230a4161079_añade_relación_usuario_tarea_y_user_id.py
+"""Añade relación Usuario–Tarea y user_id
+
+Revision ID: 2230a4161079
+Revises: 
+Create Date: 2025-06-17 09:54:04.132799
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision = '2230a4161079'
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    with op.batch_alter_table('tareas', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('user_id', sa.Integer(), nullable=False))
+        batch_op.create_foreign_key(None, 'usuarios', ['user_id'], ['id'])
+
+    # ### end Alembic commands ###
+
+
+def downgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    with op.batch_alter_table('tareas', schema=None) as batch_op:
+        batch_op.drop_constraint(None, type_='foreignkey')
+        batch_op.drop_column('user_id')
+
+    # ### end Alembic commands ###
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\env.py
+import logging
+from logging.config import fileConfig
+
+from flask import current_app
+
+from alembic import context
+
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+fileConfig(config.config_file_name)
+logger = logging.getLogger('alembic.env')
+
+
+def get_engine():
+    try:
+        # this works with Flask-SQLAlchemy<3 and Alchemical
+        return current_app.extensions['migrate'].db.get_engine()
+    except (TypeError, AttributeError):
+        # this works with Flask-SQLAlchemy>=3
+        return current_app.extensions['migrate'].db.engine
+
+
+def get_engine_url():
+    try:
+        return get_engine().url.render_as_string(hide_password=False).replace(
+            '%', '%%')
+    except AttributeError:
+        return str(get_engine().url).replace('%', '%%')
+
+
+# add your model's MetaData object here
+# for 'autogenerate' support
+# from myapp import mymodel
+# target_metadata = mymodel.Base.metadata
+config.set_main_option('sqlalchemy.url', get_engine_url())
+target_db = current_app.extensions['migrate'].db
+
+# other values from the config, defined by the needs of env.py,
+# can be acquired:
+# my_important_option = config.get_main_option("my_important_option")
+# ... etc.
+
+
+def get_metadata():
+    if hasattr(target_db, 'metadatas'):
+        return target_db.metadatas[None]
+    return target_db.metadata
+
+
+def run_migrations_offline():
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url, target_metadata=get_metadata(), literal_binds=True
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online():
+    """Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
+
+    # this callback is used to prevent an auto-migration from being generated
+    # when there are no changes to the schema
+    # reference: http://alembic.zzzcomputing.com/en/latest/cookbook.html
+    def process_revision_directives(context, revision, directives):
+        if getattr(config.cmd_opts, 'autogenerate', False):
+            script = directives[0]
+            if script.upgrade_ops.is_empty():
+                directives[:] = []
+                logger.info('No changes in schema detected.')
+
+    conf_args = current_app.extensions['migrate'].configure_args
+    if conf_args.get("process_revision_directives") is None:
+        conf_args["process_revision_directives"] = process_revision_directives
+
+    connectable = get_engine()
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=get_metadata(),
+            **conf_args
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\script.py.mako
+"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
+"""
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+# revision identifiers, used by Alembic.
+revision = ${repr(up_revision)}
+down_revision = ${repr(down_revision)}
+branch_labels = ${repr(branch_labels)}
+depends_on = ${repr(depends_on)}
+
+
+def upgrade():
+    ${upgrades if upgrades else "pass"}
+
+
+def downgrade():
+    ${downgrades if downgrades else "pass"}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\alembic.ini
+# A generic, single database configuration.
+
+[alembic]
+# template used to generate migration files
+# file_template = %%(rev)s_%%(slug)s
+
+# set to 'true' to run the environment during
+# the 'revision' command, regardless of autogenerate
+# revision_environment = false
+
+
+# Logging configuration
+[loggers]
+keys = root,sqlalchemy,alembic,flask_migrate
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[logger_flask_migrate]
+level = INFO
+handlers =
+qualname = flask_migrate
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
 
