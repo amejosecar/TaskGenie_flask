@@ -1,4 +1,4 @@
-Creado el 2025-06-17 14:18:52
+Creado el 2025-06-18 14:41:26
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\.env
@@ -26,6 +26,39 @@ __pycache__/
 # Variables de entorno
 .env
 
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\listado_migrations_versions.txt
+No migration files found in migrations/versions/
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\list_migrations.py
+# list_migrations.py
+
+import os, time
+
+folder = os.path.join("migrations", "versions")
+output = "listado_migrations_versions.txt"
+found = False
+
+with open(output, "w", encoding="utf-8") as f:
+    if not os.path.isdir(folder):
+        f.write("El directorio migrations/versions no existe.\n")
+    else:
+        for fn in sorted(os.listdir(folder)):
+            path = os.path.join(folder, fn)
+            if os.path.isfile(path):
+                mtime = time.strftime(
+                    "%Y-%m-%d %H:%M:%S",
+                    time.localtime(os.path.getmtime(path))
+                )
+                f.write(f"{fn}\t{mtime}\n")
+                found = True
+
+        if not found:
+            f.write("No migration files found in migrations/versions/\n")
+
+print(f"Wrote {output}")
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\README.md
@@ -320,19 +353,22 @@ class Tarea(db.Model):
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\__init__.py
-# app/__init__.py
-# app/__init__.py
+#app/__init__.py
+import sys
+
 from flask import Flask, render_template, redirect, url_for
 from flask_login import current_user
 from .config import Config
 from .extensions import db, csrf, login_manager, migrate
+from .models import RolEnum
 
-# Importa blueprints
+# Blueprints
 from .blueprints.auth import auth_bp
 from .blueprints.admin import admin_bp
 from .blueprints.perfil import perfil_bp
 from .blueprints.tareas import tareas_bp
 from .blueprints.usuarios import usuarios_bp
+from .blueprints.profe import profe_bp
 
 def create_app():
     app = Flask(__name__, instance_relative_config=True)
@@ -350,38 +386,23 @@ def create_app():
     app.register_blueprint(perfil_bp,   url_prefix="/perfil")
     app.register_blueprint(tareas_bp,   url_prefix="/tareas")
     app.register_blueprint(usuarios_bp, url_prefix="/u")
+    app.register_blueprint(profe_bp,    url_prefix="/profe") 
 
-    # Seed inicial (idéntico al original)...
-    with app.app_context():
-        from .models import Usuario, RolEnum, Tarea
-        from werkzeug.security import generate_password_hash
-        from datetime import date
-
-        db.create_all()
-        if not Usuario.query.first():
-            inicial = [
-                ("Americo-admin",  "carrillo", "amejosecar@keko.com",   "333333", "1970-12-18", RolEnum.ADMIN),
-                ("Americo-profe",  "carrillo", "amejosecar@profe.com",  "333333", "1970-12-18", RolEnum.PROFESOR),
-                ("Americo-Alum",   "carrillo", "amejosecar@alumno.com","333333", "1970-12-18", RolEnum.ALUMNO),
-            ]
-            for nombre,apellido,email,clave,fnac,rol in inicial:
-                u = Usuario(
-                    nombre=nombre,
-                    apellido=apellido,
-                    email=email,
-                    clave_hash=generate_password_hash(clave),
-                    fecha_nacimiento=date.fromisoformat(fnac),
-                    rol=rol
-                )
-                db.session.add(u)
-            db.session.commit()
+    # ——————————————————————————————
+    # IMPORTANTE: eliminamos el bloque de create_all() y seeds
+    # para que Alembic sea el único responsable de crear el esquema
+    # Nunca ejecutar db.create_all() aquí si usamos migraciones
+    # ——————————————————————————————
 
     @app.route("/")
     def home():
         if current_user.is_authenticated:
-            if current_user.rol == Config.RolEnum.ADMIN:
+            if current_user.rol == RolEnum.ADMIN:
                 return redirect(url_for("admin.dashboard"))
-            return redirect(url_for("tareas.listado"))
+            elif current_user.rol == RolEnum.PROFESOR:
+                return redirect(url_for("profe.listado"))
+            else:
+                return redirect(url_for("tareas.listado"))
         return redirect(url_for("auth.login"))
 
     @app.errorhandler(404)
@@ -589,12 +610,20 @@ def login():
     form = LoginForm()
     if form.validate_on_submit():
         user = autenticar_usuario(email=form.email.data, clave=form.clave.data)
-        if user:
-            login_user(user)
-            flash("Has iniciado sesión correctamente", "success")
-            # Admin al dashboard, resto a tareas
-            if user.rol.name == "ADMIN":
-                return redirect(url_for("admin.dashboard"))
+        # if user:
+        #     login_user(user)
+        #     flash("Has iniciado sesión correctamente", "success")
+        #     # Admin al dashboard, resto a tareas
+        #     if user.rol.name == "ADMIN":
+        #         return redirect(url_for("admin.dashboard"))
+        #     return redirect(url_for("tareas.listado"))
+        
+        # Admin al dashboard, PROFESOR a profe/listado, resto a tareas
+        if user.rol == RolEnum.ADMIN:
+            return redirect(url_for("admin.dashboard"))
+        elif user.rol == RolEnum.PROFESOR:
+            return redirect(url_for("profe.listado"))
+        else:
             return redirect(url_for("tareas.listado"))
 
         flash("Email o contraseña incorrectos", "danger")
@@ -1087,6 +1116,82 @@ class MemoryDB:
         return QuerySet(items)
 
 ----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\services\tarea_service.py
+# app/services/tarea_service.py
+
+from datetime import date
+from app.models import Tarea, TareaCalificada, RolEnum
+from app.extensions import db
+
+def asignar_tarea(titulo: str,
+                  descripcion: str,
+                  fecha_entrega: date,
+                  importancia_id: str,
+                  asignado_a_id: int,
+                  creador_id: int) -> Tarea:
+    """
+    Crea una Tarea y un TareaCalificada inicial.
+    """
+    # 1) Construye la tarea
+    tarea = Tarea(
+        titulo=titulo,
+        descripcion=descripcion,
+        fecha_creacion=date.today(),
+        fecha_entrega=fecha_entrega,
+        importancia_id=importancia_id,
+        estado_id="01",           # 'asignada'
+        asignado_a_id=asignado_a_id,
+        user_id=creador_id
+    )
+    db.session.add(tarea)
+    db.session.flush()  # Para obtener tarea.id
+
+    # 2) Crea TareaCalificada inicial
+    cal = TareaCalificada(
+        cod_id_tarea=tarea.id,
+        estatus_calificado="no"
+    )
+    db.session.add(cal)
+    db.session.flush()
+
+    # 3) Relaciona la FK en tarea
+    tarea.calificacion_id = cal.cod_id_califica
+
+    db.session.commit()
+    return tarea
+
+def calificar_tarea(tarea_id: int,
+                    profesor_id: int,
+                    texto: str,
+                    puntuacion: int,
+                    fecha_calificado: date) -> TareaCalificada:
+    """
+    Añade texto, puntuación y fecha a la calificación.
+    Solo PROFESORES pueden hacerlo.
+    """
+    # 1) Carga la tarea y su calificación
+    cal = TareaCalificada.query.filter_by(cod_id_tarea=tarea_id).first()
+    if not cal:
+        raise ValueError("Calificación no encontrada")
+    # 2) Valida rol del profesor
+    from app.models import Usuario
+    prof = Usuario.query.get(profesor_id)
+    if prof.rol != RolEnum.PROFESOR:
+        raise PermissionError("Sólo PROFESORES pueden calificar")
+    # 3) Actualiza
+    cal.texto_calificado = texto
+    cal.puntuacion_calificado = puntuacion
+    cal.fecha_calificado = fecha_calificado
+    cal.estatus_calificado = "si"
+    # 4) Cambia estado de la tarea
+    tarea = Tarea.query.get(tarea_id)
+    tarea.estado_id = "02"  # 'completada'
+    db.session.commit()
+    return cal
+
+
+
+----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\templates\base.html
 <!DOCTYPE html>
 <html lang="es">
@@ -1168,45 +1273,57 @@ content %}
 {% endblock %}
 
 ----------------------------------------
-# C:\americo\API\TaskGenie_flask\app\static\css\styles.css
-# Error al leer este archivo: [Errno 2] No such file or directory: 'C:\\americo\\API\\TaskGenie_flask\\app\\static\\css\\styles.css'
+# C:\americo\API\TaskGenie_flask\migrations\alembic.ini
+# A generic, single database configuration.
 
-----------------------------------------
-# C:\americo\API\TaskGenie_flask\migrations\versions\2230a4161079_añade_relación_usuario_tarea_y_user_id.py
-"""Añade relación Usuario–Tarea y user_id
+[alembic]
+# template used to generate migration files
+# file_template = %%(rev)s_%%(slug)s
 
-Revision ID: 2230a4161079
-Revises: 
-Create Date: 2025-06-17 09:54:04.132799
-
-"""
-from alembic import op
-import sqlalchemy as sa
+# set to 'true' to run the environment during
+# the 'revision' command, regardless of autogenerate
+# revision_environment = false
 
 
-# revision identifiers, used by Alembic.
-revision = '2230a4161079'
-down_revision = None
-branch_labels = None
-depends_on = None
+# Logging configuration
+[loggers]
+keys = root,sqlalchemy,alembic,flask_migrate
 
+[handlers]
+keys = console
 
-def upgrade():
-    # ### commands auto generated by Alembic - please adjust! ###
-    with op.batch_alter_table('tareas', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('user_id', sa.Integer(), nullable=False))
-        batch_op.create_foreign_key(None, 'usuarios', ['user_id'], ['id'])
+[formatters]
+keys = generic
 
-    # ### end Alembic commands ###
+[logger_root]
+level = WARN
+handlers = console
+qualname =
 
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
 
-def downgrade():
-    # ### commands auto generated by Alembic - please adjust! ###
-    with op.batch_alter_table('tareas', schema=None) as batch_op:
-        batch_op.drop_constraint(None, type_='foreignkey')
-        batch_op.drop_column('user_id')
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
 
-    # ### end Alembic commands ###
+[logger_flask_migrate]
+level = INFO
+handlers =
+qualname = flask_migrate
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\migrations\env.py
@@ -1325,6 +1442,10 @@ else:
     run_migrations_online()
 
 ----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\README
+Single-database configuration for Flask.
+
+----------------------------------------
 # C:\americo\API\TaskGenie_flask\migrations\script.py.mako
 """${message}
 
@@ -1352,55 +1473,327 @@ def downgrade():
     ${downgrades if downgrades else "pass"}
 
 ----------------------------------------
-# C:\americo\API\TaskGenie_flask\migrations\alembic.ini
-# A generic, single database configuration.
+# C:\americo\API\TaskGenie_flask\migrations\versions\06009f2cb2b5_initial_schema_usuarios_tareas_.py
+"""Initial schema: usuarios, tareas, importancia, estado, calificada
 
-[alembic]
-# template used to generate migration files
-# file_template = %%(rev)s_%%(slug)s
+Revision ID: 06009f2cb2b5
+Revises: 
+Create Date: 2025-06-18 12:36:19.397531
 
-# set to 'true' to run the environment during
-# the 'revision' command, regardless of autogenerate
-# revision_environment = false
+"""
+from alembic import op
+import sqlalchemy as sa
 
 
-# Logging configuration
-[loggers]
-keys = root,sqlalchemy,alembic,flask_migrate
+# revision identifiers, used by Alembic.
+revision = '06009f2cb2b5'
+down_revision = None
+branch_labels = None
+depends_on = None
 
-[handlers]
-keys = console
 
-[formatters]
-keys = generic
+def upgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.create_table('tareas',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('titulo', sa.String(length=100), nullable=False),
+    sa.Column('descripcion', sa.Text(), nullable=True),
+    sa.Column('completada', sa.Boolean(), nullable=True),
+    sa.Column('fecha_creacion', sa.Date(), nullable=True),
+    sa.Column('fecha_entrega', sa.Date(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('importancia_id', sa.String(length=2), nullable=True),
+    sa.Column('estado_id', sa.String(length=2), nullable=True),
+    sa.Column('asignado_a_id', sa.Integer(), nullable=True),
+    sa.Column('calificacion_id', sa.Integer(), nullable=True),
+    sa.ForeignKeyConstraint(['asignado_a_id'], ['usuarios.id'], name=op.f('fk_tareas_asignado_a_id_usuarios')),
+    sa.ForeignKeyConstraint(['calificacion_id'], ['tb_tarea_calificada.cod_id_califica'], name=op.f('fk_tareas_calificacion_id_tb_tarea_calificada')),
+    sa.ForeignKeyConstraint(['estado_id'], ['tb_estado_tarea.cod_id'], name=op.f('fk_tareas_estado_id_tb_estado_tarea')),
+    sa.ForeignKeyConstraint(['importancia_id'], ['tb_importancia.cod_id'], name=op.f('fk_tareas_importancia_id_tb_importancia')),
+    sa.ForeignKeyConstraint(['user_id'], ['usuarios.id'], name=op.f('fk_tareas_user_id_usuarios')),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_tareas'))
+    )
+    op.create_table('tb_estado_tarea',
+    sa.Column('cod_id', sa.String(length=2), nullable=False),
+    sa.Column('desc_estado_tarea', sa.String(length=50), nullable=False),
+    sa.PrimaryKeyConstraint('cod_id', name=op.f('pk_tb_estado_tarea'))
+    )
+    op.create_table('tb_importancia',
+    sa.Column('cod_id', sa.String(length=2), nullable=False),
+    sa.Column('tipo_importancia', sa.String(length=20), nullable=False),
+    sa.Column('desc_importancia', sa.String(length=100), nullable=False),
+    sa.PrimaryKeyConstraint('cod_id', name=op.f('pk_tb_importancia'))
+    )
+    op.create_table('tb_tarea_calificada',
+    sa.Column('cod_id_califica', sa.Integer(), autoincrement=True, nullable=False),
+    sa.Column('cod_id_tarea', sa.Integer(), nullable=False),
+    sa.Column('fecha_calificado', sa.Date(), nullable=True),
+    sa.Column('texto_calificado', sa.Text(), nullable=True),
+    sa.Column('puntuacion_calificado', sa.Integer(), nullable=True),
+    sa.Column('estatus_calificado', sa.String(length=2), nullable=False),
+    sa.ForeignKeyConstraint(['cod_id_tarea'], ['tareas.id'], name=op.f('fk_tb_tarea_calificada_cod_id_tarea_tareas')),
+    sa.PrimaryKeyConstraint('cod_id_califica', name=op.f('pk_tb_tarea_calificada'))
+    )
+    op.create_table('usuarios',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('nombre', sa.String(length=50), nullable=False),
+    sa.Column('apellido', sa.String(length=50), nullable=False),
+    sa.Column('email', sa.String(length=120), nullable=False),
+    sa.Column('clave_hash', sa.String(length=128), nullable=False),
+    sa.Column('fecha_nacimiento', sa.Date(), nullable=False),
+    sa.Column('rol', sa.Enum('ADMIN', 'PROFESOR', 'ALUMNO', 'USER', name='rolenum'), nullable=False),
+    sa.Column('is_blocked', sa.Boolean(), nullable=True),
+    sa.PrimaryKeyConstraint('id', name=op.f('pk_usuarios')),
+    sa.UniqueConstraint('email', name=op.f('uq_usuarios_email'))
+    )
+    # ### end Alembic commands ###
 
-[logger_root]
-level = WARN
-handlers = console
-qualname =
 
-[logger_sqlalchemy]
-level = WARN
-handlers =
-qualname = sqlalchemy.engine
+def downgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_table('usuarios')
+    op.drop_table('tb_tarea_calificada')
+    op.drop_table('tb_importancia')
+    op.drop_table('tb_estado_tarea')
+    op.drop_table('tareas')
+    # ### end Alembic commands ###
 
-[logger_alembic]
-level = INFO
-handlers =
-qualname = alembic
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\profe\__init__.py
+# app/blueprints/profe/__init__.py
 
-[logger_flask_migrate]
-level = INFO
-handlers =
-qualname = flask_migrate
+from flask import Blueprint
 
-[handler_console]
-class = StreamHandler
-args = (sys.stderr,)
-level = NOTSET
-formatter = generic
+profe_bp = Blueprint(
+    "profe",
+    __name__,
+    template_folder="templates/profe"
+)
 
-[formatter_generic]
-format = %(levelname)-5.5s [%(name)s] %(message)s
-datefmt = %H:%M:%S
+from . import routes
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\profe\routes.py
+# app/blueprints/profe/routes.py
+
+from datetime import date
+from functools import wraps
+from flask import render_template, request, redirect, url_for, flash, abort
+from flask_login import login_required, current_user
+from . import profe_bp
+from app.models import RolEnum, TareaCalificada, Usuario, Importancia
+from app.services.tarea_service import asignar_tarea, calificar_tarea
+
+def solo_profe(fn):
+    """
+    Requiere que current_user.rol == PROFESOR.
+    No comprueba si está logueado (eso lo hace @login_required).
+    """
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if current_user.rol != RolEnum.PROFESOR:
+            abort(403, description="Acceso sólo para PROFESORES")
+        return fn(*args, **kwargs)
+    return wrapper
+
+@profe_bp.route("/listado")
+@login_required
+@solo_profe
+def listado():
+    pendientes = TareaCalificada.query.filter_by(estatus_calificado="no").all()
+    return render_template("profe/listado.html", pendientes=pendientes)
+
+@profe_bp.route("/nueva", methods=["GET", "POST"])
+@login_required
+@solo_profe
+def nueva():
+    if request.method == "POST":
+        titulo         = request.form["titulo"].strip()
+        descripcion    = request.form["descripcion"].strip()
+        fecha_entrega  = date.fromisoformat(request.form["fecha_entrega"])
+        importancia_id = request.form["importancia_id"]
+        asignado_a_id  = int(request.form["asignado_a_id"])
+
+        asignar_tarea(
+            titulo=titulo,
+            descripcion=descripcion,
+            fecha_entrega=fecha_entrega,
+            importancia_id=importancia_id,
+            asignado_a_id=asignado_a_id,
+            creador_id=current_user.id
+        )
+        flash("Tarea asignada con éxito", "success")
+        return redirect(url_for("profe.listado"))
+
+    alumnos      = Usuario.query.filter_by(rol=RolEnum.ALUMNO).all()
+    importancias = Importancia.query.all()
+    return render_template(
+        "profe/nueva.html",
+        alumnos=alumnos,
+        importancias=importancias
+    )
+
+@profe_bp.route("/calificar/<int:tarea_id>", methods=["GET", "POST"])
+@login_required
+@solo_profe
+def calificar(tarea_id):
+    cal = TareaCalificada.query.filter_by(cod_id_tarea=tarea_id).first()
+    if not cal:
+        abort(404, "Calificación no encontrada")
+
+    if request.method == "POST":
+        texto      = request.form["texto_calificado"].strip()
+        puntuacion = int(request.form["puntuacion_calificado"])
+        fecha_cal  = date.fromisoformat(request.form["fecha_calificado"])
+
+        calificar_tarea(
+            tarea_id=tarea_id,
+            profesor_id=current_user.id,
+            texto=texto,
+            puntuacion=puntuacion,
+            fecha_calificado=fecha_cal
+        )
+        flash("Calificación guardada", "success")
+        return redirect(url_for("profe.listado"))
+
+    return render_template(
+        "profe/calificar.html",
+        cal=cal,
+        tarea=cal.tarea
+    )
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\profe\templates\profe\calificar.html
+{% extends 'base.html' %} {% block title %}Calificar Tarea{% endblock %} {%
+block content %}
+<h2>Calificar: {{ tarea.titulo }}</h2>
+<p>
+  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
+  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
+  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+</p>
+<form method="post">
+  <p>
+    <label>Texto de la calificación</label><br />
+    <textarea name="texto_calificado" required>
+{{ cal.texto_calificado or '' }}</textarea
+    >
+  </p>
+  <p>
+    <label>Puntuación</label><br />
+    <input
+      type="number"
+      name="puntuacion_calificado"
+      min="0"
+      max="10"
+      value="{{ cal.puntuacion_calificado or '' }}"
+      required
+    />
+  </p>
+  <p>
+    <label>Fecha calificado</label><br />
+    <input
+      type="date"
+      name="fecha_calificado"
+      value="{{ cal.fecha_calificado.isoformat() if cal.fecha_calificado else '' }}"
+      required
+    />
+  </p>
+  <p><button type="submit">Guardar Calificación</button></p>
+</form>
+{% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\profe\templates\profe\listado.html
+{% extends 'base.html' %} {% block title %}Tareas por Calificar{% endblock %} {%
+block content %}
+<h2>Tareas Pendientes de Calificar</h2>
+<p>
+  <a href="{{ url_for('profe.nueva') }}">Insertar Tarea</a> |
+  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
+  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+</p>
+{% if pendientes %}
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Título</th>
+      <th>Alumno</th>
+      <th>Acción</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for cal in pendientes %}
+    <tr>
+      <td>{{ cal.cod_id_tarea }}</td>
+      <td>{{ cal.tarea.titulo }}</td>
+      <td>
+        {{ cal.tarea.asignado_a.nombre }} {{ cal.tarea.asignado_a.apellido }}
+      </td>
+      <td>
+        <a href="{{ url_for('profe.calificar', tarea_id=cal.cod_id_tarea) }}">
+          Calificar
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No hay tareas pendientes.</p>
+{% endif %} {% endblock %}
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\app\blueprints\profe\templates\profe\nueva.html
+{# app/blueprints/profe/templates/profe/nueva.html #} {% extends 'base.html' %}
+{% block title %}Insertar Tarea{% endblock %} {% block content %}
+<h2>Insertar Nueva Tarea</h2>
+<p>
+  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
+  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
+  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+</p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <p>
+    <label>Título</label><br />
+    <input name="titulo" required />
+  </p>
+
+  <p>
+    <label>Descripción</label><br />
+    <textarea name="descripcion"></textarea>
+  </p>
+
+  <p>
+    <label>Fecha de entrega</label><br />
+    <input type="date" name="fecha_entrega" required />
+  </p>
+
+  <p>
+    <label>Importancia</label><br />
+    <select name="importancia_id">
+      {% for imp in importancias %}
+      <option value="{{ imp.cod_id }}">{{ imp.tipo_importancia }}</option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <label>Asignar a (Alumno)</label><br />
+    <select name="asignado_a_id">
+      {% for a in alumnos %}
+      <option value="{{ a.id }}">{{ a.nombre }} {{ a.apellido }}</option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <button type="submit">Registrar</button>
+  </p>
+</form>
+{% endblock %}
 

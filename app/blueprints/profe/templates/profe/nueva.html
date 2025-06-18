@@ -1,0 +1,50 @@
+{# app/blueprints/profe/templates/profe/nueva.html #} {% extends 'base.html' %}
+{% block title %}Insertar Tarea{% endblock %} {% block content %}
+<h2>Insertar Nueva Tarea</h2>
+<p>
+  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
+  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
+  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+</p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <p>
+    <label>Título</label><br />
+    <input name="titulo" required />
+  </p>
+
+  <p>
+    <label>Descripción</label><br />
+    <textarea name="descripcion"></textarea>
+  </p>
+
+  <p>
+    <label>Fecha de entrega</label><br />
+    <input type="date" name="fecha_entrega" required />
+  </p>
+
+  <p>
+    <label>Importancia</label><br />
+    <select name="importancia_id">
+      {% for imp in importancias %}
+      <option value="{{ imp.cod_id }}">{{ imp.tipo_importancia }}</option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <label>Asignar a (Alumno)</label><br />
+    <select name="asignado_a_id">
+      {% for a in alumnos %}
+      <option value="{{ a.id }}">{{ a.nombre }} {{ a.apellido }}</option>
+      {% endfor %}
+    </select>
+  </p>
+
+  <p>
+    <button type="submit">Registrar</button>
+  </p>
+</form>
+{% endblock %}

@@ -1,9 +1,11 @@
-3;ALUMNO;Analisi de BD Tareas;revisar la bd tareas y eliminar duplicaidad;no;2025-02-15
-3;ALUMNO;Analisi de BD Tareas;revisar la bd tareas y eliminar duplicaidad;no;2025-02-15
-3;ALUMNO;Analisi de BD Tareas;revisar la bd tareas y eliminar duplicaidad;no;2025-02-15
-3;ALUMNO;Analisi de BD Tareas;revisar la bd tareas y eliminar duplicaidad;no;2025-02-15
-2;PROFESOR;Comprar víveres;Comprar leche, pan y huevos;no;2025-06-10
-2;PROFESOR;Llamar al cliente;Seguimiento de proyecto con cliente X;sí;2025-06-12
-2;PROFESOR;Subir informe;Subir informe trimestral a Drive;true;2025-06-15
-2;PROFESOR;Revisar emails;Limpiar bandeja de entrada;false;2025-06-16
-3;ALUMNO;Actualizar software;Instalar parches de seguridad;1;2025-06-17
+id;titulo;descripcion;completada;fecha_creacion;user_id;fecha_entrega;importancia_id;estado_id;asignado_a_id;calificacion_id
+1;Revisar presupuesto Q2;Verificar gastos y ajustar previsiones para el segundo trimestre;false;01/06/2025;2;08/06/2025;1;1;3;1
+2;Actualizar documentación API;Incorporar nuevos endpoints y detalles de uso en manual técnico;false;02/06/2025;2;09/06/2025;3;1;3;2
+3;Diseñar propuesta cliente;Crear mockups y presentación para propuesta de diseño web;false;03/06/2025;2;10/06/2025;2;1;3;3
+4;Optimizar base de datos;Implementar índices y limpiar registros obsoletos;false;04/06/2025;2;11/06/2025;1;1;3;4
+5;Plan de marketing;Definir estrategias digitales para el próximo trimestre;false;05/06/2025;2;12/06/2025;2;1;3;5
+6;Reunión con proveedores;Agendar y preparar agenda para negociación de precios;false;06/06/2025;2;13/06/2025;3;1;3;6
+7;Test de usabilidad;Realizar pruebas con usuarios y documentar hallazgos;false;07/06/2025;2;14/06/2025;2;1;3;7
+8;Implementar autenticación;Añadir OAuth2 al módulo de inicio de sesión;false;08/06/2025;2;15/06/2025;1;1;3;8
+9;Refactorizar código legacy;Mejorar legibilidad y rendimiento de módulos antiguos;false;09/06/2025;2;16/06/2025;3;1;3;9
+10;Analizar métricas KPIs;Revisar indicadores clave y preparar informe ejecutivo;false;10/06/2025;2;17/06/2025;1;1;3;10

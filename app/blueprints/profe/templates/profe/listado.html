@@ -1,0 +1,38 @@
+{% extends 'base.html' %} {% block title %}Tareas por Calificar{% endblock %} {%
+block content %}
+<h2>Tareas Pendientes de Calificar</h2>
+<p>
+  <a href="{{ url_for('profe.nueva') }}">Insertar Tarea</a> |
+  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
+  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+</p>
+{% if pendientes %}
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Título</th>
+      <th>Alumno</th>
+      <th>Acción</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for cal in pendientes %}
+    <tr>
+      <td>{{ cal.cod_id_tarea }}</td>
+      <td>{{ cal.tarea.titulo }}</td>
+      <td>
+        {{ cal.tarea.asignado_a.nombre }} {{ cal.tarea.asignado_a.apellido }}
+      </td>
+      <td>
+        <a href="{{ url_for('profe.calificar', tarea_id=cal.cod_id_tarea) }}">
+          Calificar
+        </a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No hay tareas pendientes.</p>
+{% endif %} {% endblock %}
