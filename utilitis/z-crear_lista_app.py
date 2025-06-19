@@ -57,6 +57,7 @@ r"C:\americo\API\TaskGenie_flask\migrations\env.py",
 r"C:\americo\API\TaskGenie_flask\migrations\README",
 r"C:\americo\API\TaskGenie_flask\migrations\script.py.mako",
 r"C:\americo\API\TaskGenie_flask\migrations\versions\06009f2cb2b5_initial_schema_usuarios_tareas_.py",
+r"C:\americo\API\TaskGenie_flask\migrations\versions\35847497fc1c_agregar_campos_detalle_alumno_y_fecha_.py",
 ]
 
 def write_files_to_txt(file_paths, output_file):

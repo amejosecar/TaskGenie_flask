@@ -1,4 +1,4 @@
-Creado el 2025-06-19 12:45:21
+Creado el 2025-06-19 14:40:55
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\.env
@@ -237,18 +237,24 @@ def load_user(user_id: str):
 # C:\americo\API\TaskGenie_flask\app\models.py
 # app/models.py
 
-from enum import Enum
 from datetime import date
+from enum import Enum
+
 from flask_login import UserMixin
+
 from app.extensions import db
 
+
 class RolEnum(Enum):
+    """Enumeración de roles permitidos en la aplicación."""
     ADMIN    = "ADMIN"
     PROFESOR = "PROFESOR"
     ALUMNO   = "ALUMNO"
     USER     = "USER"
 
+
 class Usuario(UserMixin, db.Model):
+    """Representa a un usuario de la plataforma."""
     __tablename__ = "usuarios"
 
     id               = db.Column(db.Integer, primary_key=True)
@@ -260,15 +266,13 @@ class Usuario(UserMixin, db.Model):
     rol              = db.Column(db.Enum(RolEnum), default=RolEnum.USER, nullable=False)
     is_blocked       = db.Column(db.Boolean, default=False)
 
-    # 1) Tareas creadas por el usuario
-    tareas_creadas = db.relationship(
+    # Relaciones
+    tareas_creadas   = db.relationship(
         "Tarea",
         foreign_keys="Tarea.user_id",
         back_populates="usuario",
         cascade="all, delete-orphan"
     )
-
-    # 2) Tareas asignadas al usuario
     tareas_recibidas = db.relationship(
         "Tarea",
         foreign_keys="Tarea.asignado_a_id",
@@ -280,12 +284,15 @@ class Usuario(UserMixin, db.Model):
 
     @property
     def edad(self) -> int:
-        today = date.today()
-        born  = self.fecha_nacimiento
-        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        """Calcula la edad en años a partir de la fecha de nacimiento."""
+        hoy = date.today()
+        born = self.fecha_nacimiento
+        delta = (hoy.month, hoy.day) < (born.month, born.day)
+        return hoy.year - born.year - delta
 
 
 class Importancia(db.Model):
+    """Niveles de importancia para las tareas."""
     __tablename__ = "tb_importancia"
 
     cod_id           = db.Column(db.String(2), primary_key=True)
@@ -298,10 +305,11 @@ class Importancia(db.Model):
     )
 
     def __repr__(self):
-        return f"<Importancia {self.cod_id} {self.tipo_importancia}>"
+        return f"<Importancia {self.cod_id}>"
 
 
 class EstadoTarea(db.Model):
+    """Estados posibles de una tarea (asignada, en desarrollo, completada, etc.)."""
     __tablename__ = "tb_estado_tarea"
 
     cod_id            = db.Column(db.String(2), primary_key=True)
@@ -317,14 +325,17 @@ class EstadoTarea(db.Model):
 
 
 class TareaCalificada(db.Model):
-    __tablename__         = "tb_tarea_calificada"
+    """Extensión de la tarea para calificaciones y detalle del alumno."""
+    __tablename__ = "tb_tarea_calificada"
 
-    cod_id_califica       = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    cod_id_tarea          = db.Column(db.Integer, db.ForeignKey("tareas.id"), nullable=False)
-    fecha_calificado      = db.Column(db.Date, nullable=True)
-    texto_calificado      = db.Column(db.Text, nullable=True)
-    puntuacion_calificado = db.Column(db.Integer, nullable=True)
-    estatus_calificado    = db.Column(db.String(2), nullable=False, default="no")
+    cod_id_califica        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cod_id_tarea           = db.Column(db.Integer, db.ForeignKey("tareas.id"), nullable=False)
+    fecha_calificado       = db.Column(db.Date, nullable=True)
+    texto_calificado       = db.Column(db.Text, nullable=True)
+    puntuacion_calificado  = db.Column(db.Integer, nullable=True)
+    estatus_calificado     = db.Column(db.String(2), nullable=False, default="no")
+    detalle_alumno         = db.Column(db.Text, nullable=True)
+    fecha_detalle_alumno   = db.Column(db.Date, nullable=True)
 
     tarea = db.relationship(
         "Tarea",
@@ -333,10 +344,11 @@ class TareaCalificada(db.Model):
     )
 
     def __repr__(self):
-        return f"<TareaCalificada {self.cod_id_califica} tarea={self.cod_id_tarea}>"
+        return f"<TareaCalificada {self.cod_id_califica}>"
 
 
 class Tarea(db.Model):
+    """Tarea principal que puede crear un usuario y asignar a otro."""
     __tablename__ = "tareas"
 
     id               = db.Column(db.Integer, primary_key=True)
@@ -346,12 +358,14 @@ class Tarea(db.Model):
     fecha_creacion   = db.Column(db.Date, default=date.today)
     fecha_entrega    = db.Column(db.Date, nullable=True)
 
+    # Claves foráneas
     user_id          = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=False)
     importancia_id   = db.Column(db.String(2), db.ForeignKey("tb_importancia.cod_id"), nullable=True)
     estado_id        = db.Column(db.String(2), db.ForeignKey("tb_estado_tarea.cod_id"), nullable=True)
     asignado_a_id    = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=True)
     calificacion_id  = db.Column(db.Integer, db.ForeignKey("tb_tarea_calificada.cod_id_califica"), nullable=True)
 
+    # Relaciones
     usuario        = db.relationship(
         "Usuario",
         foreign_keys=[user_id],
@@ -1751,74 +1765,44 @@ datefmt = %H:%M:%S
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\migrations\env.py
+# migrations/env.py
+
 import logging
 from logging.config import fileConfig
 
 from flask import current_app
-
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# Logging setup
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
+# Import Flask-SQLAlchemy db to get metadata
+from app.extensions import db
+target_metadata = db.metadata
+
 
 def get_engine():
+    """Obtain the SQLAlchemy engine from Flask-Migrate."""
     try:
-        # this works with Flask-SQLAlchemy<3 and Alchemical
+        # Flask-SQLAlchemy < 3
         return current_app.extensions['migrate'].db.get_engine()
     except (TypeError, AttributeError):
-        # this works with Flask-SQLAlchemy>=3
+        # Flask-SQLAlchemy >= 3
         return current_app.extensions['migrate'].db.engine
 
 
-def get_engine_url():
-    try:
-        return get_engine().url.render_as_string(hide_password=False).replace(
-            '%', '%%')
-    except AttributeError:
-        return str(get_engine().url).replace('%', '%%')
-
-
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-config.set_main_option('sqlalchemy.url', get_engine_url())
-target_db = current_app.extensions['migrate'].db
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
-
-def get_metadata():
-    if hasattr(target_db, 'metadatas'):
-        return target_db.metadatas[None]
-    return target_db.metadata
-
-
 def run_migrations_offline():
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode (without DB-API)."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        render_as_batch=True,      # batch mode for SQLite
     )
 
     with context.begin_transaction():
@@ -1826,16 +1810,8 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-
-    # this callback is used to prevent an auto-migration from being generated
-    # when there are no changes to the schema
-    # reference: http://alembic.zzzcomputing.com/en/latest/cookbook.html
+    """Run migrations in 'online' mode (with a live DB connection)."""
+    # Skip empty auto-generated migrations
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, 'autogenerate', False):
             script = directives[0]
@@ -1843,16 +1819,19 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = current_app.extensions['migrate'].configure_args
-    if conf_args.get("process_revision_directives") is None:
-        conf_args["process_revision_directives"] = process_revision_directives
-
     connectable = get_engine()
+    raw_conf = current_app.extensions['migrate'].configure_args or {}
+    conf_args = raw_conf.copy()
+    # Remove any existing render_as_batch to avoid duplication
+    conf_args.pop('render_as_batch', None)
+    # Inject our directive handler
+    conf_args['process_revision_directives'] = process_revision_directives
 
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=get_metadata(),
+            target_metadata=target_metadata,
+            render_as_batch=True,   # batch mode for SQLite
             **conf_args
         )
 
@@ -1980,5 +1959,42 @@ def downgrade():
     op.drop_table('tb_importancia')
     op.drop_table('tb_estado_tarea')
     op.drop_table('tareas')
+    # ### end Alembic commands ###
+
+----------------------------------------
+# C:\americo\API\TaskGenie_flask\migrations\versions\35847497fc1c_agregar_campos_detalle_alumno_y_fecha_.py
+"""Agregar campos detalle_alumno y fecha_detalle_alumno a TareaCalificada
+
+Revision ID: 35847497fc1c
+Revises: 06009f2cb2b5
+Create Date: 2025-06-19 13:57:29.176971
+
+"""
+from alembic import op
+import sqlalchemy as sa
+
+
+# revision identifiers, used by Alembic.
+revision = '35847497fc1c'
+down_revision = '06009f2cb2b5'
+branch_labels = None
+depends_on = None
+
+
+def upgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    with op.batch_alter_table('tb_tarea_calificada', schema=None) as batch_op:
+        batch_op.add_column(sa.Column('detalle_alumno', sa.Text(), nullable=True))
+        batch_op.add_column(sa.Column('fecha_detalle_alumno', sa.Date(), nullable=True))
+
+    # ### end Alembic commands ###
+
+
+def downgrade():
+    # ### commands auto generated by Alembic - please adjust! ###
+    with op.batch_alter_table('tb_tarea_calificada', schema=None) as batch_op:
+        batch_op.drop_column('fecha_detalle_alumno')
+        batch_op.drop_column('detalle_alumno')
+
     # ### end Alembic commands ###
 

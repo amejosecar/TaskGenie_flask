@@ -1,71 +1,41 @@
+# migrations/env.py
+
 import logging
 from logging.config import fileConfig
 
 from flask import current_app
-
 from alembic import context
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
+# Logging setup
 fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
+# Import Flask-SQLAlchemy db to get metadata
+from app.extensions import db
+target_metadata = db.metadata
+
 
 def get_engine():
+    """Obtain the SQLAlchemy engine from Flask-Migrate."""
     try:
-        # this works with Flask-SQLAlchemy<3 and Alchemical
+        # Flask-SQLAlchemy < 3
         return current_app.extensions['migrate'].db.get_engine()
     except (TypeError, AttributeError):
-        # this works with Flask-SQLAlchemy>=3
+        # Flask-SQLAlchemy >= 3
         return current_app.extensions['migrate'].db.engine
 
 
-def get_engine_url():
-    try:
-        return get_engine().url.render_as_string(hide_password=False).replace(
-            '%', '%%')
-    except AttributeError:
-        return str(get_engine().url).replace('%', '%%')
-
-
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-config.set_main_option('sqlalchemy.url', get_engine_url())
-target_db = current_app.extensions['migrate'].db
-
-# other values from the config, defined by the needs of env.py,
-# can be acquired:
-# my_important_option = config.get_main_option("my_important_option")
-# ... etc.
-
-
-def get_metadata():
-    if hasattr(target_db, 'metadatas'):
-        return target_db.metadatas[None]
-    return target_db.metadata
-
-
 def run_migrations_offline():
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-
-    """
+    """Run migrations in 'offline' mode (without DB-API)."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        render_as_batch=True,      # batch mode for SQLite
     )
 
     with context.begin_transaction():
@@ -73,16 +43,8 @@ def run_migrations_offline():
 
 
 def run_migrations_online():
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-
-    """
-
-    # this callback is used to prevent an auto-migration from being generated
-    # when there are no changes to the schema
-    # reference: http://alembic.zzzcomputing.com/en/latest/cookbook.html
+    """Run migrations in 'online' mode (with a live DB connection)."""
+    # Skip empty auto-generated migrations
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, 'autogenerate', False):
             script = directives[0]
@@ -90,16 +52,19 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = current_app.extensions['migrate'].configure_args
-    if conf_args.get("process_revision_directives") is None:
-        conf_args["process_revision_directives"] = process_revision_directives
-
     connectable = get_engine()
+    raw_conf = current_app.extensions['migrate'].configure_args or {}
+    conf_args = raw_conf.copy()
+    # Remove any existing render_as_batch to avoid duplication
+    conf_args.pop('render_as_batch', None)
+    # Inject our directive handler
+    conf_args['process_revision_directives'] = process_revision_directives
 
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=get_metadata(),
+            target_metadata=target_metadata,
+            render_as_batch=True,   # batch mode for SQLite
             **conf_args
         )
 

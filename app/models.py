@@ -1,17 +1,23 @@
 # app/models.py
 
-from enum import Enum
 from datetime import date
+from enum import Enum
+
 from flask_login import UserMixin
+
 from app.extensions import db
 
+
 class RolEnum(Enum):
+    """Enumeración de roles permitidos en la aplicación."""
     ADMIN    = "ADMIN"
     PROFESOR = "PROFESOR"
     ALUMNO   = "ALUMNO"
     USER     = "USER"
 
+
 class Usuario(UserMixin, db.Model):
+    """Representa a un usuario de la plataforma."""
     __tablename__ = "usuarios"
 
     id               = db.Column(db.Integer, primary_key=True)
@@ -23,15 +29,13 @@ class Usuario(UserMixin, db.Model):
     rol              = db.Column(db.Enum(RolEnum), default=RolEnum.USER, nullable=False)
     is_blocked       = db.Column(db.Boolean, default=False)
 
-    # 1) Tareas creadas por el usuario
-    tareas_creadas = db.relationship(
+    # Relaciones
+    tareas_creadas   = db.relationship(
         "Tarea",
         foreign_keys="Tarea.user_id",
         back_populates="usuario",
         cascade="all, delete-orphan"
     )
-
-    # 2) Tareas asignadas al usuario
     tareas_recibidas = db.relationship(
         "Tarea",
         foreign_keys="Tarea.asignado_a_id",
@@ -43,12 +47,15 @@ class Usuario(UserMixin, db.Model):
 
     @property
     def edad(self) -> int:
-        today = date.today()
-        born  = self.fecha_nacimiento
-        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+        """Calcula la edad en años a partir de la fecha de nacimiento."""
+        hoy = date.today()
+        born = self.fecha_nacimiento
+        delta = (hoy.month, hoy.day) < (born.month, born.day)
+        return hoy.year - born.year - delta
 
 
 class Importancia(db.Model):
+    """Niveles de importancia para las tareas."""
     __tablename__ = "tb_importancia"
 
     cod_id           = db.Column(db.String(2), primary_key=True)
@@ -61,10 +68,11 @@ class Importancia(db.Model):
     )
 
     def __repr__(self):
-        return f"<Importancia {self.cod_id} {self.tipo_importancia}>"
+        return f"<Importancia {self.cod_id}>"
 
 
 class EstadoTarea(db.Model):
+    """Estados posibles de una tarea (asignada, en desarrollo, completada, etc.)."""
     __tablename__ = "tb_estado_tarea"
 
     cod_id            = db.Column(db.String(2), primary_key=True)
@@ -80,14 +88,17 @@ class EstadoTarea(db.Model):
 
 
 class TareaCalificada(db.Model):
-    __tablename__         = "tb_tarea_calificada"
+    """Extensión de la tarea para calificaciones y detalle del alumno."""
+    __tablename__ = "tb_tarea_calificada"
 
-    cod_id_califica       = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    cod_id_tarea          = db.Column(db.Integer, db.ForeignKey("tareas.id"), nullable=False)
-    fecha_calificado      = db.Column(db.Date, nullable=True)
-    texto_calificado      = db.Column(db.Text, nullable=True)
-    puntuacion_calificado = db.Column(db.Integer, nullable=True)
-    estatus_calificado    = db.Column(db.String(2), nullable=False, default="no")
+    cod_id_califica        = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    cod_id_tarea           = db.Column(db.Integer, db.ForeignKey("tareas.id"), nullable=False)
+    fecha_calificado       = db.Column(db.Date, nullable=True)
+    texto_calificado       = db.Column(db.Text, nullable=True)
+    puntuacion_calificado  = db.Column(db.Integer, nullable=True)
+    estatus_calificado     = db.Column(db.String(2), nullable=False, default="no")
+    detalle_alumno         = db.Column(db.Text, nullable=True)
+    fecha_detalle_alumno   = db.Column(db.Date, nullable=True)
 
     tarea = db.relationship(
         "Tarea",
@@ -96,10 +107,11 @@ class TareaCalificada(db.Model):
     )
 
     def __repr__(self):
-        return f"<TareaCalificada {self.cod_id_califica} tarea={self.cod_id_tarea}>"
+        return f"<TareaCalificada {self.cod_id_califica}>"
 
 
 class Tarea(db.Model):
+    """Tarea principal que puede crear un usuario y asignar a otro."""
     __tablename__ = "tareas"
 
     id               = db.Column(db.Integer, primary_key=True)
@@ -109,12 +121,14 @@ class Tarea(db.Model):
     fecha_creacion   = db.Column(db.Date, default=date.today)
     fecha_entrega    = db.Column(db.Date, nullable=True)
 
+    # Claves foráneas
     user_id          = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=False)
     importancia_id   = db.Column(db.String(2), db.ForeignKey("tb_importancia.cod_id"), nullable=True)
     estado_id        = db.Column(db.String(2), db.ForeignKey("tb_estado_tarea.cod_id"), nullable=True)
     asignado_a_id    = db.Column(db.Integer, db.ForeignKey("usuarios.id"), nullable=True)
     calificacion_id  = db.Column(db.Integer, db.ForeignKey("tb_tarea_calificada.cod_id_califica"), nullable=True)
 
+    # Relaciones
     usuario        = db.relationship(
         "Usuario",
         foreign_keys=[user_id],

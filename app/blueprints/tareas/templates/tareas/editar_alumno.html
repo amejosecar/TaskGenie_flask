@@ -1,0 +1,17 @@
+{% extends 'base.html' %} {% block title %}Editar Tarea{% endblock %} {% block
+content %}
+<h2>Editar: {{ tarea.titulo }}</h2>
+<form method="post">
+  {{ form.hidden_tag() }}
+  <p>
+    <label>Estado</label><br />
+    {{ form.estado_id() }}
+  </p>
+  <p>
+    <label>Tu respuesta</label><br />
+    {{ form.detalle_alumno(rows=5, cols=40) }}
+  </p>
+  <p>{{ form.submit(class="btn") }}</p>
+</form>
+<p><a href="{{ url_for('tareas.listado') }}">Volver a mis tareas</a></p>
+{% endblock %}
