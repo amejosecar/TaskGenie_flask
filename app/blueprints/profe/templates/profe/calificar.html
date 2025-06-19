@@ -6,19 +6,22 @@ block content %}
   <p>
     {{ form.texto_calificado.label }}<br />
     {{ form.texto_calificado(rows=4, cols=40) }} {% for err in
-    form.texto_calificado.errors %}<span class="error">{{ err }}</span>{% endfor
-    %}
+    form.texto_calificado.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.puntuacion_calificado.label }}<br />
     {{ form.puntuacion_calificado() }} {% for err in
-    form.puntuacion_calificado.errors %}<span class="error">{{ err }}</span>{%
-    endfor %}
+    form.puntuacion_calificado.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.fecha_calificado.label }}<br />
-    {{ form.fecha_calificado() }} {% for err in form.fecha_calificado.errors
-    %}<span class="error">{{ err }}</span>{% endfor %}
+    {{ form.fecha_calificado() }} {% for err in form.fecha_calificado.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>{{ form.submit(class="btn") }}</p>
 </form>

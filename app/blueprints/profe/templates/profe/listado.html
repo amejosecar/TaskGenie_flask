@@ -1,11 +1,10 @@
 {% extends 'base.html' %} {% block title %}Tareas por Calificar{% endblock %} {%
 block content %}
 <h2>Tareas Pendientes de Calificar</h2>
-<p>
-  <a href="{{ url_for('profe.nueva') }}">Insertar Tarea</a> |
-  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
-  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
-</p>
+
+{# Enlace para añadir nueva tarea #}
+<p><a href="{{ url_for('profe.nueva') }}">Insertar Tarea</a></p>
+
 {% if pendientes %}
 <table>
   <thead>

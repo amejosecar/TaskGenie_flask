@@ -22,10 +22,47 @@
         <a href="{{ url_for('admin.dashboard') }}">Panel Admin</a>
         <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
 
-        {% elif current_user.rol.name in ['PROFESOR', 'ALUMNO'] %}
-        <a href="{{ url_for('tareas.listado') }}">Mis Tareas</a>
-        <a href="{{ url_for('perfil.index') }}">Mi Perfil</a>
-        <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
+        <!-- antes: PROFESOR y ALUMNO compartían la misma ruta -->
+        <span style="color: red"
+          >{% elif current_user.rol.name in ['ADMIN'] %}</span
+        >
+        <span style="color: red">
+          <a href="{{ url_for('tareas.listado') }}">Mis Tareas</a></span
+        >
+        <span style="color: red">
+          <a href="{{ url_for('perfil.index') }}">Mi Perfil</a></span
+        >
+        <span style="color: red">
+          <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a></span
+        >
+
+        <!-- ahora: dos rutas distintas -->
+        <span style="color: green"
+          >{% elif current_user.rol.name == 'PROFESOR' %}</span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('profe.listado') }}">Mis Tareas</a></span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('perfil.index') }}">Mi Perfil</a></span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a></span
+        >
+
+        <span style="color: green"
+          >{% elif current_user.rol.name == 'ALUMNO' %}</span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('tareas.listado') }}">Mis Tareas</a></span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('perfil.index') }}">Mi Perfil</a></span
+        >
+        <span style="color: green">
+          <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a></span
+        >
+
         {% endif %}
       </nav>
     </header>

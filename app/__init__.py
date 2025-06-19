@@ -1,8 +1,7 @@
 #app/__init__.py
 import sys
-
-from flask import Flask, render_template, redirect, url_for
-from flask_login import current_user
+from flask import Flask, render_template, redirect, url_for, session
+from flask_login import current_user, logout_user, login_user
 from .config import Config
 from .extensions import db, csrf, login_manager, migrate
 from .models import RolEnum
@@ -25,29 +24,22 @@ def create_app():
     csrf.init_app(app)
     login_manager.init_app(app)
 
-    # Registra Blueprints
+    # Registrar Blueprints
     app.register_blueprint(auth_bp,     url_prefix="")
     app.register_blueprint(admin_bp,    url_prefix="/admin")
     app.register_blueprint(perfil_bp,   url_prefix="/perfil")
     app.register_blueprint(tareas_bp,   url_prefix="/tareas")
     app.register_blueprint(usuarios_bp, url_prefix="/u")
-    app.register_blueprint(profe_bp,    url_prefix="/profe") 
+    app.register_blueprint(profe_bp,    url_prefix="/profe")
 
-    # ——————————————————————————————
-    # IMPORTANTE: eliminamos el bloque de create_all() y seeds
-    # para que Alembic sea el único responsable de crear el esquema
-    # Nunca ejecutar db.create_all() aquí si usamos migraciones
-    # ——————————————————————————————
-
+    # ————————————————————————————————————————————————
+    # Fuerza logout y limpia session al entrar en "/"
     @app.route("/")
     def home():
-        if current_user.is_authenticated:
-            if current_user.rol == RolEnum.ADMIN:
-                return redirect(url_for("admin.dashboard"))
-            elif current_user.rol == RolEnum.PROFESOR:
-                return redirect(url_for("profe.listado"))
-            else:
-                return redirect(url_for("tareas.listado"))
+        # invalidar la sesión existente
+        logout_user()
+        session.clear()
+        # redirigir siempre a login
         return redirect(url_for("auth.login"))
 
     @app.errorhandler(404)

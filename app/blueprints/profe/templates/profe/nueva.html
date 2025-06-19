@@ -5,36 +5,34 @@ content %}
   {{ form.hidden_tag() }}
   <p>
     {{ form.titulo.label }}<br />
-    {{ form.titulo(size=40) }} {% for err in form.titulo.errors %}<span
-      class="error"
-      >{{ err }}</span
-    >{% endfor %}
+    {{ form.titulo(size=40) }} {% for err in form.titulo.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.descripcion.label }}<br />
     {{ form.descripcion(rows=4, cols=40) }} {% for err in
-    form.descripcion.errors %}<span class="error">{{ err }}</span>{% endfor %}
+    form.descripcion.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.fecha_entrega.label }}<br />
-    {{ form.fecha_entrega() }} {% for err in form.fecha_entrega.errors %}<span
-      class="error"
-      >{{ err }}</span
-    >{% endfor %}
+    {{ form.fecha_entrega() }} {% for err in form.fecha_entrega.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.importancia_id.label }}<br />
-    {{ form.importancia_id() }} {% for err in form.importancia_id.errors %}<span
-      class="error"
-      >{{ err }}</span
-    >{% endfor %}
+    {{ form.importancia_id() }} {% for err in form.importancia_id.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>
     {{ form.asignado_a_id.label }}<br />
-    {{ form.asignado_a_id() }} {% for err in form.asignado_a_id.errors %}<span
-      class="error"
-      >{{ err }}</span
-    >{% endfor %}
+    {{ form.asignado_a_id() }} {% for err in form.asignado_a_id.errors %}
+    <span class="error">{{ err }}</span>
+    {% endfor %}
   </p>
   <p>{{ form.submit(class="btn") }}</p>
 </form>
