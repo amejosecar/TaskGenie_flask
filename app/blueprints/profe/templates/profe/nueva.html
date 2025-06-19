@@ -1,50 +1,41 @@
-{# app/blueprints/profe/templates/profe/nueva.html #} {% extends 'base.html' %}
-{% block title %}Insertar Tarea{% endblock %} {% block content %}
+{% extends 'base.html' %} {% block title %}Insertar Tarea{% endblock %} {% block
+content %}
 <h2>Insertar Nueva Tarea</h2>
-<p>
-  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
-  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
-  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
-</p>
-
 <form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
+  {{ form.hidden_tag() }}
   <p>
-    <label>Título</label><br />
-    <input name="titulo" required />
+    {{ form.titulo.label }}<br />
+    {{ form.titulo(size=40) }} {% for err in form.titulo.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Descripción</label><br />
-    <textarea name="descripcion"></textarea>
+    {{ form.descripcion.label }}<br />
+    {{ form.descripcion(rows=4, cols=40) }} {% for err in
+    form.descripcion.errors %}<span class="error">{{ err }}</span>{% endfor %}
   </p>
-
   <p>
-    <label>Fecha de entrega</label><br />
-    <input type="date" name="fecha_entrega" required />
+    {{ form.fecha_entrega.label }}<br />
+    {{ form.fecha_entrega() }} {% for err in form.fecha_entrega.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Importancia</label><br />
-    <select name="importancia_id">
-      {% for imp in importancias %}
-      <option value="{{ imp.cod_id }}">{{ imp.tipo_importancia }}</option>
-      {% endfor %}
-    </select>
+    {{ form.importancia_id.label }}<br />
+    {{ form.importancia_id() }} {% for err in form.importancia_id.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Asignar a (Alumno)</label><br />
-    <select name="asignado_a_id">
-      {% for a in alumnos %}
-      <option value="{{ a.id }}">{{ a.nombre }} {{ a.apellido }}</option>
-      {% endfor %}
-    </select>
+    {{ form.asignado_a_id.label }}<br />
+    {{ form.asignado_a_id() }} {% for err in form.asignado_a_id.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
-  <p>
-    <button type="submit">Registrar</button>
-  </p>
+  <p>{{ form.submit(class="btn") }}</p>
 </form>
 {% endblock %}

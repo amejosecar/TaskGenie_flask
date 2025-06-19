@@ -1,38 +1,25 @@
 {% extends 'base.html' %} {% block title %}Calificar Tarea{% endblock %} {%
 block content %}
 <h2>Calificar: {{ tarea.titulo }}</h2>
-<p>
-  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
-  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
-  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
-</p>
 <form method="post">
+  {{ form.hidden_tag() }}
   <p>
-    <label>Texto de la calificación</label><br />
-    <textarea name="texto_calificado" required>
-{{ cal.texto_calificado or '' }}</textarea
-    >
+    {{ form.texto_calificado.label }}<br />
+    {{ form.texto_calificado(rows=4, cols=40) }} {% for err in
+    form.texto_calificado.errors %}<span class="error">{{ err }}</span>{% endfor
+    %}
   </p>
   <p>
-    <label>Puntuación</label><br />
-    <input
-      type="number"
-      name="puntuacion_calificado"
-      min="0"
-      max="10"
-      value="{{ cal.puntuacion_calificado or '' }}"
-      required
-    />
+    {{ form.puntuacion_calificado.label }}<br />
+    {{ form.puntuacion_calificado() }} {% for err in
+    form.puntuacion_calificado.errors %}<span class="error">{{ err }}</span>{%
+    endfor %}
   </p>
   <p>
-    <label>Fecha calificado</label><br />
-    <input
-      type="date"
-      name="fecha_calificado"
-      value="{{ cal.fecha_calificado.isoformat() if cal.fecha_calificado else '' }}"
-      required
-    />
+    {{ form.fecha_calificado.label }}<br />
+    {{ form.fecha_calificado() }} {% for err in form.fecha_calificado.errors
+    %}<span class="error">{{ err }}</span>{% endfor %}
   </p>
-  <p><button type="submit">Guardar Calificación</button></p>
+  <p>{{ form.submit(class="btn") }}</p>
 </form>
 {% endblock %}

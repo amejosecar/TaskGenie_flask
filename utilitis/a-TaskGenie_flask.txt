@@ -1,4 +1,4 @@
-Creado el 2025-06-18 14:41:26
+Creado el 2025-06-19 11:48:32
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\.env
@@ -570,12 +570,13 @@ class LoginForm(FlaskForm):
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\auth\routes.py
 # app/blueprints/auth/routes.py
+
 from flask import render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
 from . import auth_bp
 from .forms import RegisterForm, LoginForm
 from app.services.auth_service import registrar_usuario, autenticar_usuario
-from app.models import RolEnum  # <<< importar tu Enum
+from app.models import RolEnum
 
 @auth_bp.route("/registro", methods=["GET", "POST"])
 def registro():
@@ -609,16 +610,19 @@ def login():
 
     form = LoginForm()
     if form.validate_on_submit():
-        user = autenticar_usuario(email=form.email.data, clave=form.clave.data)
-        # if user:
-        #     login_user(user)
-        #     flash("Has iniciado sesión correctamente", "success")
-        #     # Admin al dashboard, resto a tareas
-        #     if user.rol.name == "ADMIN":
-        #         return redirect(url_for("admin.dashboard"))
-        #     return redirect(url_for("tareas.listado"))
-        
-        # Admin al dashboard, PROFESOR a profe/listado, resto a tareas
+        user = autenticar_usuario(
+            email=form.email.data,
+            clave=form.clave.data
+        )
+        if not user:
+            flash("Email o contraseña incorrectos", "danger")
+            return render_template("auth/login.html", form=form)
+
+        # Loguear usuario
+        login_user(user)
+        flash("Has iniciado sesión correctamente", "success")
+
+        # Redirigir según rol
         if user.rol == RolEnum.ADMIN:
             return redirect(url_for("admin.dashboard"))
         elif user.rol == RolEnum.PROFESOR:
@@ -626,10 +630,7 @@ def login():
         else:
             return redirect(url_for("tareas.listado"))
 
-        flash("Email o contraseña incorrectos", "danger")
-
     return render_template("auth/login.html", form=form)
-
 
 @auth_bp.route("/logout")
 @login_required
@@ -1576,130 +1577,112 @@ from . import routes
 # C:\americo\API\TaskGenie_flask\app\blueprints\profe\routes.py
 # app/blueprints/profe/routes.py
 
+# app/blueprints/profe/routes.py
+
 from datetime import date
 from functools import wraps
-from flask import render_template, request, redirect, url_for, flash, abort
+from flask import render_template, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 from . import profe_bp
+from .forms import AsignarTareaForm, CalificarTareaForm
 from app.models import RolEnum, TareaCalificada, Usuario, Importancia
 from app.services.tarea_service import asignar_tarea, calificar_tarea
 
 def solo_profe(fn):
-    """
-    Requiere que current_user.rol == PROFESOR.
-    No comprueba si está logueado (eso lo hace @login_required).
-    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if current_user.rol != RolEnum.PROFESOR:
             abort(403, description="Acceso sólo para PROFESORES")
         return fn(*args, **kwargs)
-    return wrapper
+    return login_required(wrapper)
 
-@profe_bp.route("/listado")
-@login_required
-@solo_profe
-def listado():
-    pendientes = TareaCalificada.query.filter_by(estatus_calificado="no").all()
-    return render_template("profe/listado.html", pendientes=pendientes)
 
 @profe_bp.route("/nueva", methods=["GET", "POST"])
-@login_required
 @solo_profe
 def nueva():
-    if request.method == "POST":
-        titulo         = request.form["titulo"].strip()
-        descripcion    = request.form["descripcion"].strip()
-        fecha_entrega  = date.fromisoformat(request.form["fecha_entrega"])
-        importancia_id = request.form["importancia_id"]
-        asignado_a_id  = int(request.form["asignado_a_id"])
+    form = AsignarTareaForm()
+    # rellenar select choices
+    form.importancia_id.choices = [
+        (imp.cod_id, imp.tipo_importancia) for imp in Importancia.query.all()
+    ]
+    form.asignado_a_id.choices = [
+        (u.id, f"{u.nombre} {u.apellido}")
+        for u in Usuario.query.filter_by(rol=RolEnum.ALUMNO)
+    ]
 
+    if form.validate_on_submit():
         asignar_tarea(
-            titulo=titulo,
-            descripcion=descripcion,
-            fecha_entrega=fecha_entrega,
-            importancia_id=importancia_id,
-            asignado_a_id=asignado_a_id,
+            titulo=form.titulo.data,
+            descripcion=form.descripcion.data,
+            fecha_entrega=form.fecha_entrega.data,
+            importancia_id=form.importancia_id.data,
+            asignado_a_id=form.asignado_a_id.data,
             creador_id=current_user.id
         )
         flash("Tarea asignada con éxito", "success")
         return redirect(url_for("profe.listado"))
 
-    alumnos      = Usuario.query.filter_by(rol=RolEnum.ALUMNO).all()
-    importancias = Importancia.query.all()
-    return render_template(
-        "profe/nueva.html",
-        alumnos=alumnos,
-        importancias=importancias
-    )
+    # Busca en .../templates/profe/nueva.html
+    return render_template("nueva.html", form=form)
+
 
 @profe_bp.route("/calificar/<int:tarea_id>", methods=["GET", "POST"])
-@login_required
 @solo_profe
 def calificar(tarea_id):
-    cal = TareaCalificada.query.filter_by(cod_id_tarea=tarea_id).first()
-    if not cal:
-        abort(404, "Calificación no encontrada")
+    cal = TareaCalificada.query.filter_by(cod_id_tarea=tarea_id).first_or_404()
+    form = CalificarTareaForm(
+        texto_calificado=cal.texto_calificado,
+        puntuacion_calificado=cal.puntuacion_calificado,
+        fecha_calificado=cal.fecha_calificado
+    )
 
-    if request.method == "POST":
-        texto      = request.form["texto_calificado"].strip()
-        puntuacion = int(request.form["puntuacion_calificado"])
-        fecha_cal  = date.fromisoformat(request.form["fecha_calificado"])
-
+    if form.validate_on_submit():
         calificar_tarea(
             tarea_id=tarea_id,
             profesor_id=current_user.id,
-            texto=texto,
-            puntuacion=puntuacion,
-            fecha_calificado=fecha_cal
+            texto=form.texto_calificado.data,
+            puntuacion=form.puntuacion_calificado.data,
+            fecha_calificado=form.fecha_calificado.data
         )
         flash("Calificación guardada", "success")
         return redirect(url_for("profe.listado"))
 
-    return render_template(
-        "profe/calificar.html",
-        cal=cal,
-        tarea=cal.tarea
-    )
+    # Busca en .../templates/profe/calificar.html
+    return render_template("calificar.html", form=form, tarea=cal.tarea)
+
+
+@profe_bp.route("/listado")
+@solo_profe
+def listado():
+    pendientes = TareaCalificada.query.filter_by(estatus_calificado="no").all()
+    # Ahora Jinja buscará en <blueprint>/templates/profe/listado.html
+    return render_template("listado.html", pendientes=pendientes)
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\profe\templates\profe\calificar.html
 {% extends 'base.html' %} {% block title %}Calificar Tarea{% endblock %} {%
 block content %}
 <h2>Calificar: {{ tarea.titulo }}</h2>
-<p>
-  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
-  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
-  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
-</p>
 <form method="post">
+  {{ form.hidden_tag() }}
   <p>
-    <label>Texto de la calificación</label><br />
-    <textarea name="texto_calificado" required>
-{{ cal.texto_calificado or '' }}</textarea
-    >
+    {{ form.texto_calificado.label }}<br />
+    {{ form.texto_calificado(rows=4, cols=40) }} {% for err in
+    form.texto_calificado.errors %}<span class="error">{{ err }}</span>{% endfor
+    %}
   </p>
   <p>
-    <label>Puntuación</label><br />
-    <input
-      type="number"
-      name="puntuacion_calificado"
-      min="0"
-      max="10"
-      value="{{ cal.puntuacion_calificado or '' }}"
-      required
-    />
+    {{ form.puntuacion_calificado.label }}<br />
+    {{ form.puntuacion_calificado() }} {% for err in
+    form.puntuacion_calificado.errors %}<span class="error">{{ err }}</span>{%
+    endfor %}
   </p>
   <p>
-    <label>Fecha calificado</label><br />
-    <input
-      type="date"
-      name="fecha_calificado"
-      value="{{ cal.fecha_calificado.isoformat() if cal.fecha_calificado else '' }}"
-      required
-    />
+    {{ form.fecha_calificado.label }}<br />
+    {{ form.fecha_calificado() }} {% for err in form.fecha_calificado.errors
+    %}<span class="error">{{ err }}</span>{% endfor %}
   </p>
-  <p><button type="submit">Guardar Calificación</button></p>
+  <p>{{ form.submit(class="btn") }}</p>
 </form>
 {% endblock %}
 
@@ -1746,54 +1729,45 @@ block content %}
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\app\blueprints\profe\templates\profe\nueva.html
-{# app/blueprints/profe/templates/profe/nueva.html #} {% extends 'base.html' %}
-{% block title %}Insertar Tarea{% endblock %} {% block content %}
+{% extends 'base.html' %} {% block title %}Insertar Tarea{% endblock %} {% block
+content %}
 <h2>Insertar Nueva Tarea</h2>
-<p>
-  <a href="{{ url_for('profe.listado') }}">Listar Tareas</a> |
-  <a href="{{ url_for('perfil.index') }}">Mi Perfil</a> |
-  <a href="{{ url_for('auth.logout') }}">Cerrar Sesión</a>
-</p>
-
 <form method="post">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-
+  {{ form.hidden_tag() }}
   <p>
-    <label>Título</label><br />
-    <input name="titulo" required />
+    {{ form.titulo.label }}<br />
+    {{ form.titulo(size=40) }} {% for err in form.titulo.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Descripción</label><br />
-    <textarea name="descripcion"></textarea>
+    {{ form.descripcion.label }}<br />
+    {{ form.descripcion(rows=4, cols=40) }} {% for err in
+    form.descripcion.errors %}<span class="error">{{ err }}</span>{% endfor %}
   </p>
-
   <p>
-    <label>Fecha de entrega</label><br />
-    <input type="date" name="fecha_entrega" required />
+    {{ form.fecha_entrega.label }}<br />
+    {{ form.fecha_entrega() }} {% for err in form.fecha_entrega.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Importancia</label><br />
-    <select name="importancia_id">
-      {% for imp in importancias %}
-      <option value="{{ imp.cod_id }}">{{ imp.tipo_importancia }}</option>
-      {% endfor %}
-    </select>
+    {{ form.importancia_id.label }}<br />
+    {{ form.importancia_id() }} {% for err in form.importancia_id.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
   <p>
-    <label>Asignar a (Alumno)</label><br />
-    <select name="asignado_a_id">
-      {% for a in alumnos %}
-      <option value="{{ a.id }}">{{ a.nombre }} {{ a.apellido }}</option>
-      {% endfor %}
-    </select>
+    {{ form.asignado_a_id.label }}<br />
+    {{ form.asignado_a_id() }} {% for err in form.asignado_a_id.errors %}<span
+      class="error"
+      >{{ err }}</span
+    >{% endfor %}
   </p>
-
-  <p>
-    <button type="submit">Registrar</button>
-  </p>
+  <p>{{ form.submit(class="btn") }}</p>
 </form>
 {% endblock %}
 
