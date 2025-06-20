@@ -1,4 +1,4 @@
-Creado el 2025-06-20 10:45:01
+Creado el 2025-06-20 13:51:02
 
 ----------------------------------------
 # C:\americo\API\TaskGenie_flask\.env
@@ -769,12 +769,18 @@ content %}
   <ul>
     <li><strong>Email:</strong> {{ user.email }}</li>
     <li>
-      <strong>Fecha de nacimiento:</strong> {{
-      user.fecha_nacimiento.strftime('%Y-%m-%d') }}
+      <strong>Fecha de nacimiento:</strong>
+      {{ user.fecha_nacimiento.strftime('%Y-%m-%d') }}
     </li>
     <li><strong>Rol:</strong> {{ user.rol.value }}</li>
   </ul>
+
+  {# Enlace dinámico según rol #} {% if user.rol.name == 'PROFESOR' %}
+  <p><a href="{{ url_for('profe.listado') }}">Regresar</a></p>
+  {% elif user.rol.name in ['ADMIN'] %} {# No mostramos enlace para Admin #} {%
+  else %}
   <p><a href="{{ url_for('tareas.listado') }}">Ver mis tareas</a></p>
+  {% endif %}
 </section>
 {% endblock %}
 
